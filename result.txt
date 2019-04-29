@@ -1,0 +1,19 @@
+NON_OPT:
+Size: 512 Time: 687 Trace: 63133.9
+Size: 1024 Time: 5444 Trace: 252536
+Size: 2048 Time: 109088 Trace: 1.0103e+06
+Size: 4096 Time: 1464585 Trace: 4.04097e+06
+Size: 8192 Time: 12081149 Trace: 1.61656e+07
+
+TILE: 
+Size: 512 Time: 355 Trace: 63133.9
+Size: 1024 Time: 2785 Trace: 252536
+Size: 2048 Time: 22517 Trace: 1.0103e+0
+
+TILE&MUTI_THREAD:
+Size: 512 Time: 47 Trace: 63133.9
+Size: 1024 Time: 374 Trace: 252536
+Size: 2048 Time: 3123 Trace: 1.0103e+06
+Size: 4096 Time: 25297 Trace: 4.04097e+06
+Size: 8192 Time: 190718 Trace: 1.61656e+07
+
