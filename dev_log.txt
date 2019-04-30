@@ -1,3 +1,16 @@
 @Before Apr 29nd
 = 已完成
 - 矩阵运算中基础部分，多线程部分，矩阵行读优化部分的编写并通过调试运行，已获取运行结果
+
+@Apr 29nd
+= 问题
+- 编译失败
+    - 可能原因：GCC编译选项问题，未能正常启动SIMD(SSE/AVX)
+
+@Apr 30nd
+= 发现
+- GCC编译选项可使用-msse（使用SSE），其他选项可见https://gcc.gnu.org/onlinedocs/gcc-4.5.3/gcc/i386-and-x86_002d64-Options.html
+- CMAKE选项则可以使用SET(CMAEK_CXX_FLAGS)或SET(CMAKE_C_FLAGS)，也可直接通过ADD_COMPLIE_OPTIONS命令
+= 待办
+- 将SIMD加速代码独立，简化程序和CMakeLists.txt文件编写，先确保可正常使用SIMD再作其他整合的操作
+
