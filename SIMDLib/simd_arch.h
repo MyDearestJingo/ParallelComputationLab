@@ -1,13 +1,13 @@
 #ifndef _SIMD_ARCH
 #define _SIMA_ARCH
 //USER CHANGE ARCHITECURE, HERE!
-//#define _SSE_ARCH
+#define _SSE_ARCH
 //#define _AVX_ARCH
-#define MADD_ENABLE
-#define _AVX512_ARCH
+//#define MADD_ENABLE
+//#define _AVX512_ARCH
 //#define _NEON_ARCH
 
-//#define _x86_PERFORMANCE
+#define _x86_PERFORMANCE
 //#define _ARM_PERFORMANCE
 
 #include <time.h>

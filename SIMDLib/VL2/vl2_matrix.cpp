@@ -85,7 +85,7 @@ void matrixF32_madd(float *d, float *a, float *b, int N){
 			a0 = _VF32_SET1(ap[0]); 
 			a1 = _VF32_SET1(ap[N]); 
 			a2 = _VF32_SET1(ap[2*N]); 
-			a3 = _VF32_SET1(ap[3*N]); ap ++;
+			a3 = _VF32_SET1(ap[3*N]); ap ++; // <- app++ 很重要啊！！！！！！
 #ifndef MADD_ENABLE
 			a0 = _VF32_MUL(a0, b0);	a1 = _VF32_MUL(a1, b0);
 			a2 = _VF32_MUL(a2, b0);	a3 = _VF32_MUL(a3, b0);

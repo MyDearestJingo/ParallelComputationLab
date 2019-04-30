@@ -47,11 +47,12 @@ float matrix_Tr(float *c, int N) {
 }
 
 /* CONFIG */
-const int N_list_size = 5;
-int N_list[N_list_size] = { 512	,1024	,2048	,4096	,8192 };
-// int N_list[1] = {8192}; 
+// const int N_list_size = 5;
+// int N_list[N_list_size] = { 512	,1024	,2048	,4096	,8192 };
+const int N_list_size = 1;
+int N_list[1] = {2048}; 
 int turn = 0;
-static optiType opt = NON_OPT; // optimation type
+static optiType opt = SSE; // optimation type
 static int n_thread = 8;
 
 int main()
@@ -136,7 +137,7 @@ void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE) {
 		}
 		break;
 	case SSE:
-		matrixF32_madd(c,a,b,N);
+		matrixF32_madd(c,b,a,N);
 		break;
 	case AVX:
 		break;

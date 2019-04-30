@@ -10,7 +10,14 @@
 @Apr 30nd
 = 发现
 - GCC编译选项可使用-msse（使用SSE），其他选项可见https://gcc.gnu.org/onlinedocs/gcc-4.5.3/gcc/i386-and-x86_002d64-Options.html
-- CMAKE选项则可以使用SET(CMAEK_CXX_FLAGS)或SET(CMAKE_C_FLAGS)，也可直接通过ADD_COMPLIE_OPTIONS命令
+- CMAKE选项则可以使用SET(CMAEK_CXX_FLAGS)或SET(CMAKE_C_FLAGS)，也可直接通过ADD_COMPILE_OPTIONS命令
 = 待办
 - 将SIMD加速代码独立，简化程序和CMakeLists.txt文件编写，先确保可正常使用SIMD再作其他整合的操作
-
+    - Apr 30nd 17:50 已不用此工作，先已经可以编译运行
+= 草他妈的！！！！！！！
+- 一定要注意vl2_matrix.cpp/matrixF32_madd()里底层循环的ap++，很重要！坑了老子一下午！
+= 已完成
+- 对simd_arch.h的自定义，也就是注释掉/取消注释一部分宏，以启用接口
+- CMake编写并调试运行，现已可运行
+= 下一阶段
+- 编写matrix_madd()函数外部（在case SSE）中的外层循环，以更新传入的指针基址
