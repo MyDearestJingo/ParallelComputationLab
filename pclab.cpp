@@ -2,7 +2,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <omp.h>
-// #include "SIMDLib/simd_arch.h"
+#include "SIMDLib/simd_arch.h"
 #include "SIMDLib/VL2/vl2_matrix.h"
 
 using namespace std;
@@ -52,7 +52,7 @@ float matrix_Tr(float *c, int N) {
 const int N_list_size = 1;
 int N_list[1] = {2048}; 
 int turn = 0;
-static optiType opt = SSE; // optimation type
+static optiType opt = TILE; // optimation type
 static int n_thread = 8;
 
 int main()
@@ -136,9 +136,56 @@ void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE) {
 			}
 		}
 		break;
-	case SSE:
-		matrixF32_madd(c,b,a,N);
+	case SSE:{
+		/*
+			// float *pA = a;
+			// float *pB = b;
+			// float *pC = c;
+			// int idxA = 0;
+			// int idxB = 0;
+			// int idxC = 0;
+			// for(int i=0;i<N*N/(_VF32_SIZE*_VF32_SIZE);i++){
+			// 	pB = b+idxB;
+			// 	idxA = idxB/N; pA = a+idxA;
+			// 	idxC = idxB%N; pC = c+idxC;
+			// 	for(int j=0;j<N/_VF32_SIZE;j++){
+			// 		cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
+			// 		cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
+			// 		cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
+			// 		matrixF32_madd(pC, pA, pB, N);				
+			// 		idxA += N*_VF32_SIZE; pA = a+idxA;
+			// 		idxC += N*_VF32_SIZE; pC = c+idxC;
+			// 	}
+			// 	idxB += _VF32_SIZE;
+			// 	idxB = (idxB/N)*_VF32_SIZE*N + idxB%N;
+			// }
+		*/
+		int nBox = N/_VF32_SIZE; // 当前_VF32_SIZE大小下，分块后矩阵的规模
+		int iABox = 0, iBBox = 0, iCBox = 0; // 原A、B、C矩阵分块后得到的分块矩阵的索引,Box对应与原矩阵就是一个方形选框
+		for(int i=0;i<nBox*nBox;i++){ // 顶层循环：固定BBox，纵向移动ABox和CBox
+			iABox = iBBox/nBox+0; // 由BBox所在行决定ABox所在列
+			iCBox = iBBox%nBox+0; // 由BBox所在列决定CBox所在列
+			//#pragma omp parallel for num_threads(n_thread)
+			for(int j=0;j<nBox;j++){
+				// cout<<"iABox: "<<iABox/nBox<<','<<iABox%nBox<<'\t';
+				// cout<<"iBBox: "<<iBBox/nBox<<','<<iBBox%nBox<<'\t';
+				// cout<<"iCBox: "<<iCBox/nBox<<','<<iCBox%nBox<<'\t';
+				// 由iBox计算Box内第一个元素在原矩阵的索引：idx_Element = x_idx + N * y_idx
+				int idxA = _VF32_SIZE*(iABox/nBox)+_VF32_SIZE*N*(iABox%nBox);
+				int idxB = _VF32_SIZE*(iBBox/nBox)+_VF32_SIZE*N*(iBBox%nBox);
+				int idxC = _VF32_SIZE*(iCBox/nBox)+_VF32_SIZE*N*(iCBox%nBox);
+				// cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
+				// cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
+				// cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
+				matrixF32_madd(&c[idxC], &a[idxA], &b[idxB], N);
+				iABox += nBox; // ABox向下移动一个Box位置
+				iCBox += nBox; // CBox向下移动一个Box位置
+			}
+			iBBox++; // BBox移动到下一个位置
+		}
+
 		break;
+	}
 	case AVX:
 		break;
 	case GPU:

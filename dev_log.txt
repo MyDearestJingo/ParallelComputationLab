@@ -21,3 +21,23 @@
 - CMake编写并调试运行，现已可运行
 = 下一阶段
 - 编写matrix_madd()函数外部（在case SSE）中的外层循环，以更新传入的指针基址
+
+@May 1st
+= 已完成
+- 编写matrix_madd()函数外部（在case SSE）中的外层循环，更新传入的指针基址
+= 可优化点
+- 在计算idx_（即idxA,idxB,idxC）时可考虑使用SSE来进行加速
+- 直接使用OpenMP进行多线程会出现整合问题，计算结果有误
+    - 考虑手动划分16个线程进行运算，最后整合
+= 习得技能
+- 如果在case中声明了变量，需要用{}将这个case的内容括住
+    - 养成习惯，写case的话都要带{}
+- CMake使用OpenMP
+    - 1. 添加-fopenmp编译选项
+    - 2. 添加FIND_PACKAGE(OpenMP REQUIRED)
+    - 3. 添加TARGET_LINK_LIBRARIES(pclab_exe OPENMP::OPENMP_CXX)
+= 代码缺陷：
+- 提高_VF32_SIZE将会导致计算不充分，原因不明
+= 待办
+- 高优先级：完成AVX512的编写
+- 低优先级：找到提高_VF32_SIZE且不会导致计算错误的办法

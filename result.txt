@@ -17,3 +17,7 @@ Size: 2048 Time: 3123 Trace: 1.0103e+06
 Size: 4096 Time: 25297 Trace: 4.04097e+06
 Size: 8192 Time: 190718 Trace: 1.61656e+07
 
+SSE
+@May 1st MyDearest-RTX _VF32_SIZE = 4
+Size: 8192 Time: 609945 Trace: 1.61656e+07
+

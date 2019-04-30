@@ -16,6 +16,8 @@
 #define _VU32_ALGSIZE 16
 #define _VU32_LOG_ALGSIZE 4
 
+// #define _VF32_SIZE 4
+// _VF32_SIZE <= N (the size of matrix)
 #define _VF32_SIZE 4
 #define _VF32_ALGSIZE 16
 #define _VF32_LOG_ALGSIZE 4
