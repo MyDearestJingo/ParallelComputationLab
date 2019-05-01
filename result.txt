@@ -21,3 +21,6 @@ SSE
 @May 1st MyDearest-RTX _VF32_SIZE = 4
 Size: 8192 Time: 609945 Trace: 1.61656e+07
 
+AVX
+@May 1st MyDearest-LAB _VF32_SIZE = 4
+Size: 4096 Time: 39102 Trace: 4.04098e+06

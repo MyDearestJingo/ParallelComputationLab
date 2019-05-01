@@ -1,4 +1,7 @@
 #include "simd_arch.h"
+#include <iostream>
+using std::cout;
+using std::endl;
 
 //dest,a,b are aligned memory
 void vectorF32_add(float *dest, float *a,float *b,int N){
@@ -67,6 +70,9 @@ void matrixF32_madd(float *d, float *a, float *b, int N){
 	float *dp=d, *ap0=a, *bp=b;
 	_VF32 a0, a1, a2, a3, b0, b1, b2, b3, d0, d1, d2, d3;
 	for (int i = 0; i < w; i++){
+		#ifdef _DEBUG_INFO
+			cout<<"load b"<<endl;
+		#endif
 		b0 = _VF32_LOAD(bp); bp += N;
 		b1 = _VF32_LOAD(bp); bp += N;
 		b2 = _VF32_LOAD(bp); bp += N;
@@ -77,6 +83,9 @@ void matrixF32_madd(float *d, float *a, float *b, int N){
 			float *dp1 = dp;
 			float *ap;
 			ap = ap0;
+			#ifdef _DEBUG_INFO
+				cout << "load d" << endl;
+			#endif
 			d0 = _VF32_LOAD(dp); dp += N;
 			d1 = _VF32_LOAD(dp); dp += N;
 			d2 = _VF32_LOAD(dp); dp += N;

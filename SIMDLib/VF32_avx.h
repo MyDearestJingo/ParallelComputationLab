@@ -26,8 +26,11 @@ typedef __m256 _VF32;
 #define _VF32_CMPLE(__a, __b) 		_mm256_cmp_ps((__a),(__b),_CMP_LE_OQ)
 
 //Aligned Load and Store 
-#define _VF32_LOAD(aAddr)			_mm256_load_ps((aAddr))
-#define _VF32_STORE(aAddr, __b)		_mm256_store_ps((aAddr), (__b))
+// #define _VF32_LOAD(aAddr)			_mm256_load_ps((aAddr))
+// #define _VF32_STORE(aAddr, __b)		_mm256_store_ps((aAddr), (__b))
+// Custom by MyDearestEstelle at May 1st
+#define _VF32_LOAD(aAddr)			_mm256_loadu_ps((aAddr))
+#define _VF32_STORE(aAddr, __b)		_mm256_storeu_ps((aAddr), (__b))
 
 //Unligned Load and Store 
 #define _VF32_LOADU(aAddr)			_mm256_loadu_ps((aAddr))
