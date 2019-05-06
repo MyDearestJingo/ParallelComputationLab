@@ -11,6 +11,7 @@
 
 // #define MATRIX
 #define SORT
+#define MULTI_THREAD_SORT
 // #define DEBUG
 
 using namespace std;
@@ -69,17 +70,23 @@ struct timeval end_tv;
 
 #ifdef SORT
     /* ==== CONFIG ==== */
-    #define THEREAD_NUM 1
+    #define THREAD_NUM 4
     #define RADIX 8 // size of radix in bits, determine the length of mask
     #define BUF_SIZE 10
     // #define MAX_LEN 5 // due to RAND_MAX = 32767, which contains 5 integers most
     #define N 1000000000 // target: 1000000000
     #define SEED 0.3
+    #define BUF_BIN_SIZE 30 // number of ints in per cache buf, which is no more than (cache_size/n_bins)/sizeof(int)
     #define DATA_DIR "./sort_data/"
+
     // #define QSORT
     #define UNSORTED_WBACK
     // #define SORTED_WBACK
     /* ================ */
+    typedef struct thr_exec_para{
+        int *arr;
+        int i_thread;
+    }thr_exec_para;
     void sort_gen(int *d, const long long len, int seed){
         cout<<"Generating arr"<<endl;
         srand(seed);
@@ -87,7 +94,8 @@ struct timeval end_tv;
             d[i]=rand();
         }
     }
-    void radix_sort(int *arr, const long long len, const int radix, const int buf_size);
+    void radix_sort(int *arr, const long long offset, const long long len);
+    void* thread_exec(void *p_para);
     int cmp1(const void *elem1, const void *elem2){
         return *(int*)elem1 - *(int*)elem2;
     }
@@ -162,7 +170,7 @@ struct timeval end_tv;
                     cout<<i-2+j<<'.'<<arr[i-2+j]<<" ";
                 }
                 cout<<endl;
-                // return false;
+                return false;
             }
         }
         // cout<<"right"<<endl;
@@ -265,8 +273,26 @@ int main(){
         start_tv.tv_usec = 0;
         gettimeofday(&start_tv, NULL);
 
+        #ifdef MULTI_THREAD_SORT
+        thr_exec_para para;
+        para.arr = arr;
+        pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM], idx_thread[THREAD_NUM];
+        for(int i=0;i<THREAD_NUM;i++){
+            para.i_thread = i;
+            ret[i] = pthread_create(&id_thread[i], NULL, thread_exec, (void*)&para);
+            if(ret[i]!=0){
+                cout<<"ERROR: thread No."<<i<<" create failed"<<endl;
+                break;
+            }
+        }
+        for(int i=0;i<THREAD_NUM;i++){
+            pthread_join(id_thread[i],NULL);
+        }
+        #else
         // Start sorting
-        radix_sort(arr, N, RADIX, BUF_SIZE);
+        radix_sort(arr, 0, N);
+        #endif
+
 
         // Efficiency monitor ends
         ////Linux
@@ -274,6 +300,7 @@ int main(){
         gettimeofday(&end_tv, NULL);
         timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
         cout<<"Time cost: "<<timecost<<endl;
+        
 
         if(check(arr,N, unsorted_arr_path,sorted_arr_path)) cout<<"ALL GREEN"<<endl;
         else cout<<"Failure"<<endl;
@@ -420,24 +447,31 @@ int main(){
     }
 #endif
 #ifdef SORT
-    void radix_sort(int *arr, const long long len, const int radix, const int buf_size){
-        int n_bin = pow(2,radix);
+    void radix_sort(int *arr, const long long offset, const long long len){
+        arr += offset;
+        int n_bin = pow(2,RADIX);
         int l_bin = len;
-        int n_seg = sizeof(int)*8 / radix; // number of the turns of radix sorting
+        int n_seg = sizeof(int)*8 / RADIX; // number of the turns of radix sorting
         
         // init bins
         #ifdef DEBUG
         cout<<"init bins"<<endl;
-        cout<<"radix = "<<radix<<endl;
+        cout<<"radix = "<<RADIX<<endl;
         #endif // DEBUG
         int **arr_bin = new int *[n_bin];
         for(int i=0;i<n_bin;i++){
             arr_bin[i] = new int [l_bin];
         }
         int *count_bin = new int[n_bin]; // counter array for every bin
+        // init cache buf
+        int **arr_buf = new int *[n_bin];
+        for(int i=0;i<n_bin;i++){
+            arr_buf[i] = new int [BUF_BIN_SIZE];
+        }
+        int *count_buf = new int [n_bin];
 
         // sort
-        int mask = pow(2,radix)-1; // init mask for its bit length
+        int mask = pow(2,RADIX)-1; // init mask for its bit length
         for(int i=0;i<n_seg;i++){ // outside loop for different segments' radix sorting
             // int* p_to_element = arr;
             cout<<"Now sorting seg No."<<i<<'\r';
@@ -446,21 +480,38 @@ int main(){
             cout<<"n_seg = "<<i<<" | mask: "<<bin_mask<<endl;
             #endif // DEBUG
             for(int j=0;j<len;j++){ // inside loop for simple sort of every segment position
-                #ifdef DEBUG
-                bitset<32> bin_element(arr[j]);
-                cout<<"At seg No."<<i<<" | element No."<<j/*<<bin_element*/;
-                #endif // DEBUG
                 // get the index of target bin
                 int i_bin = arr[j]&mask; 
-                i_bin = i_bin >> i*radix;
+                i_bin = i_bin >> i*RADIX;
                 #ifdef DEBUG
-                cout<<" | bin No."<<i_bin;
-                if(arr[j]==1585990364) cout<<" <====== B68";
-                else if(arr[j]==1548233367) cout<< " <====== A69";
+                bitset<32> bin_element(arr[j]);
+                cout<<"At seg No."<<i<<" | element No."<<j<<" | bin No."<<i_bin<<" , counter="<<count_buf[i_bin];
+                // cout<<" | bin No."<<i_bin;
+                // if(arr[j]==1585990364) cout<<" <====== B68";
+                // else if(arr[j]==1548233367) cout<< " <====== A69";
                 cout<<endl;
                 #endif // DEBUG
-                arr_bin[i_bin][count_bin[i_bin]] = arr[j];
-                count_bin[i_bin]++;
+                // arr_bin[i_bin][count_bin[i_bin]] = arr[j];
+                // count_bin[i_bin]++;
+                arr_buf[i_bin][count_buf[i_bin]] = arr[j];
+                count_buf[i_bin]++;
+                if(count_buf[i_bin]==BUF_BIN_SIZE){ // if any buffer bin is full, write all its elements back to memory
+                    #ifdef DEBUG
+                    cout<<"Buf bin No."<<i_bin<<" is full"<<endl;
+                    #endif // DEBUG
+                    for(int k=0;k<BUF_BIN_SIZE;k++){
+                        arr_bin[i_bin][count_bin[i_bin]] = arr_buf[i_bin][k];
+                        count_bin[i_bin]++;
+                    }
+                    count_buf[i_bin] = 0; // reset the counter of No.i_bin buffer bin
+                }
+            }
+            for(int i_bin=0;i_bin<n_bin;i_bin++){ // write the rest elements in buffer bin back to memory
+                for(int k=0;k<count_buf[i_bin];k++){
+                    arr_bin[i_bin][count_bin[i_bin]] = arr_buf[i_bin][k];
+                    count_bin[i_bin]++;
+                }
+                count_buf[i_bin] = 0;
             }
             // **Write the elements in bins back to arr (maybe later should use another arr_bin to switch)
             int *p_tmp = arr;
@@ -469,22 +520,29 @@ int main(){
             #endif // DEBUG
             for(int i_bin=0;i_bin<n_bin;i_bin++){
                 #ifdef DEBUG
-                cout<<"Write back bin No."<<i_bin<<" total elements: "<<count_bin[i_bin]<<endl;
+                // cout<<"Write back bin No."<<i_bin<<" total elements: "<<count_bin[i_bin]<<endl;
                 #endif // DEBUG
                 for(int k=0;k<count_bin[i_bin];k++){
                     int tmp = arr_bin[i_bin][k];
                     *p_tmp = arr_bin[i_bin][k];
                     #ifdef DEBUG
-                    if(tmp==1585990364) cout<<" B68 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
-                    else if(tmp==1548233367) cout<< " A69 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
+                    // if(tmp==1585990364) cout<<" B68 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
+                    // else if(tmp==1548233367) cout<< " A69 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
                     #endif // DEBUG
                     p_tmp++;
                 }
                 count_bin[i_bin] = 0;
             }
             // update mask
-            mask = mask << radix; // shift mask
+            mask = mask << RADIX; // shift mask
             cout<<endl;
         }
+    }
+    void* thread_exec(void *p_para){
+        // int i_thread = para->i_thread;
+        thr_exec_para para = *(thr_exec_para*)p_para;
+        int block_len = N/THREAD_NUM;
+        int offset = para.i_thread*block_len;
+        radix_sort(para.arr, offset, block_len);
     }
 #endif

@@ -74,3 +74,13 @@
 = 下一阶段
 - 搞清楚buffer size的作用，获取实验数据
 - 按照Chrome收藏夹里的多线程完成改写
+@May 6nd 16:56
+= 已完成
+- Cache Buffer机制现已加入肯德基豪华午餐
+- 多线程机制现已加入肯德基豪华午餐（未完成，还差最后归并）
+    - int pthread_create(pthread_t *tid, const pthread_attr_t *attr, void *(*func) (void *), void *arg);的各种踩坑
+        - func，也就是需要线程执行的函数的返回值必须是【void *】，也就是说，函数\得是void *func()；
+        - 对于func的参数传递，如果有多个参数需要传递给func，则先用一个结构体打包，然后再传
+            指针（在pthread_create将会强制转换为void*)，到了func里再将传入的指针强制转换为结构体类型指针，之后操作便可；
+
+- 取消radix_sort()参数radix, pos_len, buf_size；
