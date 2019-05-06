@@ -70,13 +70,15 @@ struct timeval end_tv;
 #ifdef SORT
     /* ==== CONFIG ==== */
     #define THEREAD_NUM 1
-    #define RADIX 16 // for efficiency of shift operation, using hex(4) or oct(3)
-    #define POS_LEN 1
+    #define RADIX 8 // size of radix in bits, determine the length of mask
     #define BUF_SIZE 10
     // #define MAX_LEN 5 // due to RAND_MAX = 32767, which contains 5 integers most
     #define N 1000000000 // target: 1000000000
     #define SEED 0.3
     #define DATA_DIR "./sort_data/"
+    // #define QSORT
+    #define UNSORTED_WBACK
+    // #define SORTED_WBACK
     /* ================ */
     void sort_gen(int *d, const long long len, int seed){
         cout<<"Generating arr"<<endl;
@@ -85,23 +87,26 @@ struct timeval end_tv;
             d[i]=rand();
         }
     }
-    void radix_sort(int *arr, const long long len, const int radix, const int pos_len, const int buf_size);
+    void radix_sort(int *arr, const long long len, const int radix, const int buf_size);
     int cmp1(const void *elem1, const void *elem2){
         return *(int*)elem1 - *(int*)elem2;
     }
     bool check(int *arr, const long long len, string unsorted_arr_path, string sorted_arr_path ){
         // int test_arr[N] = {0};
+        #ifdef QSORT
         int *test_arr = new int [N];
         fstream FILE;
         FILE.open(unsorted_arr_path,ios::in);
         if(!FILE){
             sort_gen(test_arr, len, SEED);
+            #ifdef UNSORTED_WBACK
             FILE.open(unsorted_arr_path,ios::out);
             for(long long i=0;i<N;i++){
                 FILE<<test_arr[i]<<' ';
             }
             FILE.close();
             cout<<unsorted_arr_path<<" generate complete"<<endl;
+            #endif
         }
         else{
             cout<<"Loading "<<unsorted_arr_path<<endl;
@@ -129,12 +134,14 @@ struct timeval end_tv;
             timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
             cout<<"C++ qsort() Time cost: "<<timecost<<endl;
 
+            #ifdef SORTED_WBACK
             FILE.open(sorted_arr_path,ios::out);
             for(long long i=0;i<N;i++){
                 FILE<<test_arr[i]<<' ';
             }
             cout<<sorted_arr_path<<" generate complete"<<endl;
             FILE.close();
+            #endif
         }
         else{
             cout<<"Loading "<<sorted_arr_path<<endl;
@@ -144,8 +151,11 @@ struct timeval end_tv;
         }        
         FILE.close();
         cout<<"Checking ..."<<endl;
+        #endif
         for(long long i=0;i<len-1;i++){
+            #ifdef QSORT    
             if(arr[i]!=test_arr[i]) return false;
+            #endif
             if(arr[i]>arr[i+1]){
                 cout<<"error at "<<i<<" vs "<<i+1<<" : ";
                 for(int j=0;j<6;j++){
@@ -230,12 +240,14 @@ int main(){
         FILE.open(unsorted_arr_path,ios::in);
         if(!FILE){
             sort_gen(arr, N, SEED);
+            #ifdef SORTED_WBACK
             FILE.open(unsorted_arr_path,ios::out);
             for(long long i=0;i<N;i++){
                 FILE<<arr[i]<<' ';
             }
             FILE.close();
             cout<<unsorted_arr_path<<" generate complete"<<endl;
+            #endif
         }
         else{
             cout<<"Loading "<<unsorted_arr_path<<endl;
@@ -254,7 +266,7 @@ int main(){
         gettimeofday(&start_tv, NULL);
 
         // Start sorting
-        radix_sort(arr, N, RADIX, POS_LEN, BUF_SIZE);
+        radix_sort(arr, N, RADIX, BUF_SIZE);
 
         // Efficiency monitor ends
         ////Linux
@@ -408,17 +420,15 @@ int main(){
     }
 #endif
 #ifdef SORT
-    void radix_sort(int *arr, const long long len, const int radix, const int pos_len, const int buf_size){
-        int n_bin = pow(radix,pos_len);
+    void radix_sort(int *arr, const long long len, const int radix, const int buf_size){
+        int n_bin = pow(2,radix);
         int l_bin = len;
-        int l_radix = sqrt(radix); // bit length of radix. When radix=16, it is 4
-        int l_seg = l_radix*pos_len; // bit length of segment that being radix sorted at every turn
-        int n_seg = sizeof(int)*8 / l_seg; // number of the turns of radix sorting
+        int n_seg = sizeof(int)*8 / radix; // number of the turns of radix sorting
         
         // init bins
         #ifdef DEBUG
         cout<<"init bins"<<endl;
-        cout<<"l_seg = "<<l_seg<<endl;
+        cout<<"radix = "<<radix<<endl;
         #endif // DEBUG
         int **arr_bin = new int *[n_bin];
         for(int i=0;i<n_bin;i++){
@@ -427,7 +437,7 @@ int main(){
         int *count_bin = new int[n_bin]; // counter array for every bin
 
         // sort
-        int mask = pow(2,l_seg)-1; // init mask for its bit length
+        int mask = pow(2,radix)-1; // init mask for its bit length
         for(int i=0;i<n_seg;i++){ // outside loop for different segments' radix sorting
             // int* p_to_element = arr;
             cout<<"Now sorting seg No."<<i<<'\r';
@@ -442,7 +452,7 @@ int main(){
                 #endif // DEBUG
                 // get the index of target bin
                 int i_bin = arr[j]&mask; 
-                i_bin = i_bin >> i*l_seg;
+                i_bin = i_bin >> i*radix;
                 #ifdef DEBUG
                 cout<<" | bin No."<<i_bin;
                 if(arr[j]==1585990364) cout<<" <====== B68";
@@ -473,7 +483,7 @@ int main(){
                 count_bin[i_bin] = 0;
             }
             // update mask
-            mask = mask << l_seg; // shift mask
+            mask = mask << radix; // shift mask
             cout<<endl;
         }
     }
