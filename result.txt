@@ -1,15 +1,23 @@
 ####### Matrix #######
-NON_OPT:
+NON_OPT: 
+@MyDearest-RTX
 Size: 512 Time: 687 Trace: 63133.9
 Size: 1024 Time: 5444 Trace: 252536
 Size: 2048 Time: 109088 Trace: 1.0103e+06
 Size: 4096 Time: 1464585 Trace: 4.04097e+06
 Size: 8192 Time: 12081149 Trace: 1.61656e+07
+@MyDearest-LAB
+Size: 512 Time: 789 Trace: 63133.9
+Size: 1024 Time: 6989 Trace: 252536
+Size: 2048 Time: 145815 Trace: 1.0103e+06
+Size: 4096 Time: 1461783 Trace: 4.04097e+06
+
+
 
 TILE: 
 Size: 512 Time: 355 Trace: 63133.9
 Size: 1024 Time: 2785 Trace: 252536
-Size: 2048 Time: 22517 Trace: 1.0103e+0
+Size: 2048 Time: 22517 Trace: 1.0103e+06
 
 TILE&MUTI_THREAD:
 Size: 512 Time: 47 Trace: 63133.9
@@ -29,3 +37,9 @@ Size: 4096 Time: 39102 Trace: 4.04098e+06
 ####### Sort #######
 @May 6th MyDearest-LAB
 thread=1, radix=16, pos_len=1, (nonused)buffer_size=10, radix_sort_time=58533, qsort_time=183960;
+
+@May 6th MyDearest-LAB
+CONFIG: thread = 8, radix = 8, buffer_size = 16 | RESULT: 44353
+CONFIG: thread = 5, radix = 8, buffer_size = 16 | RESULT: 33365
+CONFIG: thread =10, radix = 8, buffer_size = 16 | RESULT: 50507
+CONFIG: thread = 4, radix = 8, buffer_size = 16 | RESULT: 31527 # 与第二个对比明显看出，归并卡时间

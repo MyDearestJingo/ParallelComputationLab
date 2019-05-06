@@ -57,14 +57,14 @@ struct timeval end_tv;
     }
     /* CONFIG */
     // const int N_list_size = 5;
-    // int N_list[N_list_size] = { 512	,1024	,2048	,4096	,8192 };
+    // static int N_list[N_list_size] = { 512,1024,2048,4096,8192};
     const int N_list_size = 1;
-    int N_list[1] = {512}; 
-    int nTest = 10;
+    int N_list[1] = {8192}; 
+    int nTest = 1;
     int tolTime = 0;
     int turn = 0;
     int block_size = 32;
-    static optiType opt = TILE; // optimation type
+    static optiType opt = NON_OPT; // optimation type
     static int n_thread = 8;
 #endif
 
@@ -72,17 +72,16 @@ struct timeval end_tv;
     /* ==== CONFIG ==== */
     #define THREAD_NUM 4
     #define RADIX 8 // size of radix in bits, determine the length of mask
-    #define BUF_SIZE 10
-    // #define MAX_LEN 5 // due to RAND_MAX = 32767, which contains 5 integers most
     #define N 1000000000 // target: 1000000000
     #define SEED 0.3
-    #define BUF_BIN_SIZE 30 // number of ints in per cache buf, which is no more than (cache_size/n_bins)/sizeof(int)
+    #define BUF_BIN_SIZE 16 // number of ints in per cache buf, which is no more than (cache_size/n_bins)/sizeof(int)
     #define DATA_DIR "./sort_data/"
 
     // #define QSORT
-    #define UNSORTED_WBACK
+    // #define UNSORTED_WBACK
     // #define SORTED_WBACK
     /* ================ */
+    int *arr = new int [N];
     typedef struct thr_exec_para{
         int *arr;
         int i_thread;
@@ -96,6 +95,8 @@ struct timeval end_tv;
     }
     void radix_sort(int *arr, const long long offset, const long long len);
     void* thread_exec(void *p_para);
+    void* _thread_exec(void *para);
+    void merge(int *arr, int *out_arr);
     int cmp1(const void *elem1, const void *elem2){
         return *(int*)elem1 - *(int*)elem2;
     }
@@ -160,9 +161,13 @@ struct timeval end_tv;
         FILE.close();
         cout<<"Checking ..."<<endl;
         #endif
+        bool result = true;
         for(long long i=0;i<len-1;i++){
             #ifdef QSORT    
-            if(arr[i]!=test_arr[i]) return false;
+            if(arr[i]!=test_arr[i]) {
+                cout<<"No."<<i<<" "<<test_arr[i]<<" vs "<<arr[i]<<endl;
+                result = false;
+            }
             #endif
             if(arr[i]>arr[i+1]){
                 cout<<"error at "<<i<<" vs "<<i+1<<" : ";
@@ -170,22 +175,22 @@ struct timeval end_tv;
                     cout<<i-2+j<<'.'<<arr[i-2+j]<<" ";
                 }
                 cout<<endl;
-                return false;
+                result = false;
             }
         }
         // cout<<"right"<<endl;
-        return true;
+        return result;
     }
 #endif 
 
 int main(){
-    #ifdef MARTIX
+    #ifdef MATRIX
         for(int iTest = 0; iTest<nTest; iTest++){
             long long timecost = 0;
             if(opt==MUTI_THREAD) cout<<"Threads: "<<n_thread<<endl; 
-            for (turn = 0; turn < N_list_size; turn++) {
+            for (int i=0; i < N_list_size; i++) {
                 //矩阵声明与变量初始化
-                static int N = N_list[turn]; //矩阵规模：N×N
+                int N = N_list[i]; //矩阵规模：N×N
                 float *a = new float[N*N];
                 float *b = new float[N*N];
                 float *c = new float[N*N];
@@ -223,7 +228,7 @@ int main(){
                 float per_diff = (trace - trace_val) / trace;
                 // if (per_diff<0.001 || per_diff>-0.001) cout << "True" << endl;
                 // else cout << "False, trace = " << trace << ", trace_val = " << trace_val << endl;
-                cout << "Test #"<< iTest <<" | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
+                cout << "Test #"<< i <<" | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
                 //释放内存
                 delete a;
                 delete b;
@@ -238,7 +243,7 @@ int main(){
     #ifdef SORT
         long long timecost = 0;
         // int arr[N] = {0};
-        int *arr = new int [N];
+        arr = new int [N];
         #ifdef DEBUG
         cout<<"Enter sort_gen()"<<endl;
         #endif // DEBUG
@@ -247,7 +252,22 @@ int main(){
         fstream FILE;
         FILE.open(unsorted_arr_path,ios::in);
         if(!FILE){
+            //效率监控开始
+            ////Linux
+            long long timecost = 0;
+            start_tv.tv_usec = 0;
+            gettimeofday(&start_tv, NULL);
+
+            //开始计算
             sort_gen(arr, N, SEED);
+
+            //效率监控结束
+            ////Linux
+            end_tv.tv_usec = 0;
+            gettimeofday(&end_tv, NULL);
+            timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
+            cout<<"Generate Timecost = "<<timecost<<endl;
+
             #ifdef SORTED_WBACK
             FILE.open(unsorted_arr_path,ios::out);
             for(long long i=0;i<N;i++){
@@ -258,10 +278,25 @@ int main(){
             #endif
         }
         else{
+            //效率监控开始
+            ////Linux
+            long long timecost = 0;
+            start_tv.tv_usec = 0;
+            gettimeofday(&start_tv, NULL);
+
+            //开始计算
             cout<<"Loading "<<unsorted_arr_path<<endl;
             for(long long i = 0;i<N;i++){
                 FILE>>arr[i];
             }
+
+            //效率监控结束
+            ////Linux
+            end_tv.tv_usec = 0;
+            gettimeofday(&end_tv, NULL);
+            timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
+            cout<<"Loading Timecost = "<<timecost<<endl;
+
         }
         #ifdef DEBUG
         // check(arr,N);
@@ -274,23 +309,46 @@ int main(){
         gettimeofday(&start_tv, NULL);
 
         #ifdef MULTI_THREAD_SORT
-        thr_exec_para para;
-        para.arr = arr;
+        thr_exec_para  *para_list = new thr_exec_para[THREAD_NUM];
         pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM], idx_thread[THREAD_NUM];
         for(int i=0;i<THREAD_NUM;i++){
-            para.i_thread = i;
-            ret[i] = pthread_create(&id_thread[i], NULL, thread_exec, (void*)&para);
+            para_list[i].i_thread = i;
+            para_list[i].arr = arr;
+            // para.i_thread = idx_thread[i];
+            ret[i] = pthread_create(&id_thread[i], NULL, thread_exec, (void*)(&para_list[i]));
+            // ret[i] = pthread_create(&id_thread[i], NULL, _thread_exec, (void*)(idx_thread+i));
             if(ret[i]!=0){
                 cout<<"ERROR: thread No."<<i<<" create failed"<<endl;
                 break;
             }
+            #ifdef DEBUG
+            cout<<"idx_thread NO."<<i<<" is "<<idx_thread[i]<<endl;
+            #endif // DEBUG
         }
         for(int i=0;i<THREAD_NUM;i++){
             pthread_join(id_thread[i],NULL);
         }
+        #ifdef DEBUG
+        for(int i=0;i<N;i++){
+            if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
+            cout<<arr[i]<<endl;
+        }
+        #endif // DEBUG
+
+        int *result_arr = new int [N];
+        // qsort(arr,N,sizeof(int),cmp1);
+        // radix_sort(arr,0,N);
+        merge(arr, result_arr);
+        arr = result_arr;
         #else
         // Start sorting
         radix_sort(arr, 0, N);
+        #ifdef DEBUG
+        for(int i=0;i<N;i++){
+            if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
+            cout<<arr[i]<<endl;
+        }
+        #endif // DEBUG
         #endif
 
 
@@ -543,6 +601,45 @@ int main(){
         thr_exec_para para = *(thr_exec_para*)p_para;
         int block_len = N/THREAD_NUM;
         int offset = para.i_thread*block_len;
+        #ifdef DEBUG
+        cout<<"Thread No."<<para.i_thread<<" offset: "<<offset<<endl;
+        #endif // DEBUG
         radix_sort(para.arr, offset, block_len);
+    }
+    void* _thread_exec(void *para){
+        int threadIndex=*(int*)para;
+        int block_len=N/THREAD_NUM;
+        int offset=threadIndex*block_len;
+        #ifdef DEBUG
+        cout<<"Thread No."<<threadIndex<<" offset: "<<offset<<endl;
+        #endif // DEBUG
+        radix_sort(arr, offset, block_len);
+    }
+    void merge(int *arr, int *out_arr){
+        int block_len = N/THREAD_NUM;
+        int i_element[THREAD_NUM] = {0};
+        int min;
+        int last_i_block;
+        for(int i=0;i<N;i++){
+            min = RAND_MAX;
+            last_i_block = 0;
+            for(int i_block=0;i_block<THREAD_NUM;i_block++){
+                if(i_element[i_block]>=block_len) continue;
+                if (min > arr[i_block * block_len + i_element[i_block]]){ // find new min
+                    min = arr[i_block * block_len + i_element[i_block]];
+                    last_i_block = i_block;
+                } 
+            }
+
+            #ifdef DEBUG
+            cout<<"============================"<<endl;
+            cout<<min<<", from block."<<last_i_block<<".["<<i_element[last_i_block]-1<<"]"<<" <<<<<<<<<<<< MIN <<"<<endl;
+            for(int i_block=0;i_block<THREAD_NUM;i_block++){
+                cout<<arr[i_block * block_len + i_element[i_block]]<<", from block."<<i_block<<".["<<i_element[i_block]<<"]"<<endl;
+            }
+            #endif // DEBUG
+            out_arr[i] = min;
+            i_element[last_i_block]++;
+        }
     }
 #endif

@@ -74,13 +74,26 @@
 = 下一阶段
 - 搞清楚buffer size的作用，获取实验数据
 - 按照Chrome收藏夹里的多线程完成改写
-@May 6nd 16:56
+@May 6th 16:56
 = 已完成
 - Cache Buffer机制现已加入肯德基豪华午餐
 - 多线程机制现已加入肯德基豪华午餐（未完成，还差最后归并）
     - int pthread_create(pthread_t *tid, const pthread_attr_t *attr, void *(*func) (void *), void *arg);的各种踩坑
-        - func，也就是需要线程执行的函数的返回值必须是【void *】，也就是说，函数\得是void *func()；
+        - func，也就是需要线程执行的函数的返回值必须是【void *】，也就是说，函数得是void *func()；
         - 对于func的参数传递，如果有多个参数需要传递给func，则先用一个结构体打包，然后再传
             指针（在pthread_create将会强制转换为void*)，到了func里再将传入的指针强制转换为结构体类型指针，之后操作便可；
-
 - 取消radix_sort()参数radix, pos_len, buf_size；
+@May 7th 00:07
+= 踩坑警告
+- 对于目前使用的多线程处理方案，调用堆栈为：pthread_creat()->thread_exec()->radix_sort()，由于向thread_exec()
+    传参时使用指针传参（参数结构体），进而导致在thread_exec()将参数处理完并传入radix_sort()之前，pthread_creat()再次启用
+    新线程并调用thread_exec()并传入与之前相同的指针，且指针指向的结构体内的值由于前者正在使用而未能及时更新值，故而导致多个
+    线程使用相同的参数调用thread_exec()和radix_sort()，导致运算错误
+        - 解决方案：不再使用同一个参数结构体初始化线程，每个线程使用不同的参数结构体；
+= 已完成
+- 多线程radix_sort()已经可以完成基本功能
+    - 注意，THREAD_NUM必须能够被N整除，否则会出事
+    - radix_sort()后的归并过程目前是性能瓶颈（当前为THRAD_NUM路，单线程归并）
+= IDEA
+- 矩阵的BLOCK+多线程，SSE+多线程等，计划改用固定C框，移动A、B框来实现并行，由此每个线程都能完成C中一个BLOCK的完整计算而无需
+    依赖其他线程的运算结果；
