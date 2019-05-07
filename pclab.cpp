@@ -11,8 +11,8 @@
 
 // #define MATRIX
 #define SORT
-#define MULTI_THREAD_SORT
 // #define DEBUG
+#define OUT_LOG
 
 using namespace std;
 //效率监控变量
@@ -72,20 +72,21 @@ struct timeval end_tv;
     /* ==== CONFIG ==== */
     #define THREAD_NUM 4
     #define RADIX 8 // size of radix in bits, determine the length of mask
-    #define N 1000000000 // target: 1000000000
+    #define N 32 // target: 1000000000
     #define SEED 0.3
     #define BUF_BIN_SIZE 16 // number of ints in per cache buf, which is no more than (cache_size/n_bins)/sizeof(int)
+    #define L2_CACHE 256 // the size of L2 cache in KB
     #define DATA_DIR "./sort_data/"
 
-    // #define QSORT
+    // #define R_SORT
+    #define M_SORT
+    // #define MT_R_SORT
+    #define MT_M_SORT
+
+    #define QSORT
     // #define UNSORTED_WBACK
     // #define SORTED_WBACK
     /* ================ */
-    int *arr = new int [N];
-    typedef struct thr_exec_para{
-        int *arr;
-        int i_thread;
-    }thr_exec_para;
     void sort_gen(int *d, const long long len, int seed){
         cout<<"Generating arr"<<endl;
         srand(seed);
@@ -93,10 +94,6 @@ struct timeval end_tv;
             d[i]=rand();
         }
     }
-    void radix_sort(int *arr, const long long offset, const long long len);
-    void* thread_exec(void *p_para);
-    void* _thread_exec(void *para);
-    void merge(int *arr, int *out_arr);
     int cmp1(const void *elem1, const void *elem2){
         return *(int*)elem1 - *(int*)elem2;
     }
@@ -127,7 +124,7 @@ struct timeval end_tv;
         FILE.open(sorted_arr_path,ios::in);
         if(!FILE){
             cout<<"C++ sorting ..."<<endl;
-             // Efficiency monitor starts
+                // Efficiency monitor starts
             ////Linux
             long long timecost = 0;
             start_tv.tv_usec = 0;
@@ -168,7 +165,7 @@ struct timeval end_tv;
                 cout<<"No."<<i<<" "<<test_arr[i]<<" vs "<<arr[i]<<endl;
                 result = false;
             }
-            #endif
+            #else
             if(arr[i]>arr[i+1]){
                 cout<<"error at "<<i<<" vs "<<i+1<<" : ";
                 for(int j=0;j<6;j++){
@@ -177,11 +174,39 @@ struct timeval end_tv;
                 cout<<endl;
                 result = false;
             }
+            #endif
         }
         // cout<<"right"<<endl;
         return result;
     }
+    int *arr = new int [N];
+ 
+    #ifdef R_SORT
+        void radix_sort(int *arr, const long long offset, const long long len);
+    #endif 
+    #ifdef MT_R_SORT
+        typedef struct rsort_thr_para{
+            int *arr;
+            int i_thread;
+        }rsort_thr_para;
+        void* thread_exec_rsort(void *p_para);
+        void merge(int *arr, int *out_arr);
+    #endif
+    #ifdef M_SORT
+        typedef struct msort_thr_para{
+            int *unsorted_arr;
+            int *sorted_arr;
+            int len;
+            int i_thread;
+        }msort_thr_para;
+        void* unit_merge(void* para); // For single thread
+    #endif
+    #ifdef MT_M_SORT
+        int *msort_thread_assign(int *org_arr, int *tmp_arr, const int block_size, const int n_thread);
+    #endif
+
 #endif 
+
 
 int main(){
     #ifdef MATRIX
@@ -229,6 +254,10 @@ int main(){
                 // if (per_diff<0.001 || per_diff>-0.001) cout << "True" << endl;
                 // else cout << "False, trace = " << trace << ", trace_val = " << trace_val << endl;
                 cout << "Test #"<< i <<" | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
+                fstream FILE;
+                FILE.open("r.txt",ios::out);
+                FILE << "Test #" << i << " | Size: " << N << " Time: " << timecost << " Trace: " << trace << endl;
+                FILE.close();
                 //释放内存
                 delete a;
                 delete b;
@@ -298,57 +327,91 @@ int main(){
             cout<<"Loading Timecost = "<<timecost<<endl;
 
         }
-        #ifdef DEBUG
-        // check(arr,N);
-        cout<<"Enter radix_sort()"<<endl;
-        #endif // DEBUG
 
         // Efficiency monitor starts
         ////Linux
         start_tv.tv_usec = 0;
         gettimeofday(&start_tv, NULL);
 
-        #ifdef MULTI_THREAD_SORT
-        thr_exec_para  *para_list = new thr_exec_para[THREAD_NUM];
-        pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM], idx_thread[THREAD_NUM];
-        for(int i=0;i<THREAD_NUM;i++){
-            para_list[i].i_thread = i;
-            para_list[i].arr = arr;
-            // para.i_thread = idx_thread[i];
-            ret[i] = pthread_create(&id_thread[i], NULL, thread_exec, (void*)(&para_list[i]));
-            // ret[i] = pthread_create(&id_thread[i], NULL, _thread_exec, (void*)(idx_thread+i));
-            if(ret[i]!=0){
-                cout<<"ERROR: thread No."<<i<<" create failed"<<endl;
-                break;
+        #ifdef MT_R_SORT
+            rsort_thr_para *para_list = new rsort_thr_para[THREAD_NUM];
+            pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM], idx_thread[THREAD_NUM];
+            for(int i=0;i<THREAD_NUM;i++){
+                para_list[i].i_thread = i;
+                para_list[i].arr = arr;
+                // para.i_thread = idx_thread[i];
+                ret[i] = pthread_create(&id_thread[i], NULL, thread_exec_rsort, (void*)(&para_list[i]));
+                // ret[i] = pthread_create(&id_thread[i], NULL, _thread_exec, (void*)(idx_thread+i));
+                if(ret[i]!=0){
+                    cout<<"ERROR: thread No."<<i<<" create failed"<<endl;
+                    break;
+                }
+                #ifdef DEBUG
+                cout<<"idx_thread NO."<<i<<" is "<<idx_thread[i]<<endl;
+                #endif // DEBUG
+            }
+            for(int i=0;i<THREAD_NUM;i++){
+                pthread_join(id_thread[i],NULL);
             }
             #ifdef DEBUG
-            cout<<"idx_thread NO."<<i<<" is "<<idx_thread[i]<<endl;
+            for(int i=0;i<N;i++){
+                if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
+                cout<<arr[i]<<endl;
+            }
             #endif // DEBUG
-        }
-        for(int i=0;i<THREAD_NUM;i++){
-            pthread_join(id_thread[i],NULL);
-        }
-        #ifdef DEBUG
-        for(int i=0;i<N;i++){
-            if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
-            cout<<arr[i]<<endl;
-        }
-        #endif // DEBUG
 
-        int *result_arr = new int [N];
-        // qsort(arr,N,sizeof(int),cmp1);
-        // radix_sort(arr,0,N);
-        merge(arr, result_arr);
-        arr = result_arr;
+            int *result_arr = new int [N];
+            // qsort(arr,N,sizeof(int),cmp1);
+            // radix_sort(arr,0,N);
+            merge(arr, result_arr);
+            arr = result_arr;
         #else
-        // Start sorting
-        radix_sort(arr, 0, N);
-        #ifdef DEBUG
-        for(int i=0;i<N;i++){
-            if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
-            cout<<arr[i]<<endl;
-        }
-        #endif // DEBUG
+            // // Start sorting
+            // radix_sort(arr, 0, N);
+            // #ifdef DEBUG
+            // for(int i=0;i<N;i++){
+            //     if(i%(N/THREAD_NUM)==0) cout<<"------"<<endl;
+            //     cout<<arr[i]<<endl;
+            // }
+            // #endif // DEBUG
+        #endif
+
+        #ifdef M_SORT
+            #ifdef DEBUG
+            cout<<"=== org arr: ==="<<endl;
+            for(int i=0;i<N;i++){
+                cout<<arr[i]<<endl;
+            }
+            #endif // DEBUG
+            int *tmp_arr = new int[N];
+            #ifdef MT_M_SORT
+                arr = msort_thread_assign(arr,tmp_arr,N,THREAD_NUM);
+                #ifdef DEBUG
+                cout<<" === tmp_arr ==="<<endl;
+                for(int i=0;i<N;i++){
+                    cout<<tmp_arr[i]<<endl;
+                }
+                cout<<" === arr ===="<<endl;
+                for(int i=0;i<N;i++){
+                    cout<<arr[i]<<endl;
+                }
+                #endif // DEBUG
+                
+            #else
+                msort_thr_para para;
+                para.len = N;
+                para.unsorted_arr = arr;
+                para.sorted_arr = tmp_arr;
+                para.i_thread = 0;
+                unit_merge(&para);
+                arr = para.sorted_arr;
+            #endif
+            #ifdef DEBUG
+            cout<<"=== after unit_merge ==="<<endl;
+            for(int i=0;i<N;i++){
+                cout<<arr[i]<<endl;
+            }
+            #endif // DEBUG
         #endif
 
 
@@ -358,11 +421,10 @@ int main(){
         gettimeofday(&end_tv, NULL);
         timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
         cout<<"Time cost: "<<timecost<<endl;
-        
+    #endif    
 
-        if(check(arr,N, unsorted_arr_path,sorted_arr_path)) cout<<"ALL GREEN"<<endl;
-        else cout<<"Failure"<<endl;
-    #endif
+    if(check(arr,N, unsorted_arr_path,sorted_arr_path)) cout<<"ALL GREEN"<<endl;
+    else cout<<"Failure"<<endl;
     return 0;
 }
 #ifdef MATRIX
@@ -505,141 +567,273 @@ int main(){
     }
 #endif
 #ifdef SORT
-    void radix_sort(int *arr, const long long offset, const long long len){
-        arr += offset;
-        int n_bin = pow(2,RADIX);
-        int l_bin = len;
-        int n_seg = sizeof(int)*8 / RADIX; // number of the turns of radix sorting
-        
-        // init bins
-        #ifdef DEBUG
-        cout<<"init bins"<<endl;
-        cout<<"radix = "<<RADIX<<endl;
-        #endif // DEBUG
-        int **arr_bin = new int *[n_bin];
-        for(int i=0;i<n_bin;i++){
-            arr_bin[i] = new int [l_bin];
-        }
-        int *count_bin = new int[n_bin]; // counter array for every bin
-        // init cache buf
-        int **arr_buf = new int *[n_bin];
-        for(int i=0;i<n_bin;i++){
-            arr_buf[i] = new int [BUF_BIN_SIZE];
-        }
-        int *count_buf = new int [n_bin];
-
-        // sort
-        int mask = pow(2,RADIX)-1; // init mask for its bit length
-        for(int i=0;i<n_seg;i++){ // outside loop for different segments' radix sorting
-            // int* p_to_element = arr;
-            cout<<"Now sorting seg No."<<i<<'\r';
+    #ifdef R_SORT
+        void radix_sort(int *arr, const long long offset, const long long len){
+            arr += offset;
+            int n_bin = pow(2,RADIX);
+            int l_bin = len;
+            int n_seg = sizeof(int)*8 / RADIX; // number of the turns of radix sorting
+            
+            // init bins
             #ifdef DEBUG
-            bitset<32> bin_mask(mask);
-            cout<<"n_seg = "<<i<<" | mask: "<<bin_mask<<endl;
+            cout<<"init bins"<<endl;
+            cout<<"radix = "<<RADIX<<endl;
             #endif // DEBUG
-            for(int j=0;j<len;j++){ // inside loop for simple sort of every segment position
-                // get the index of target bin
-                int i_bin = arr[j]&mask; 
-                i_bin = i_bin >> i*RADIX;
+            int **arr_bin = new int *[n_bin];
+            for(int i=0;i<n_bin;i++){
+                arr_bin[i] = new int [l_bin];
+            }
+            int *count_bin = new int[n_bin]; // counter array for every bin
+            // init cache buf
+            int **arr_buf = new int *[n_bin];
+            for(int i=0;i<n_bin;i++){
+                arr_buf[i] = new int [BUF_BIN_SIZE];
+            }
+            int *count_buf = new int [n_bin];
+
+            // SORT
+            int mask = pow(2,RADIX)-1; // init mask for its bit length
+            for(int i=0;i<n_seg;i++){ // outside loop for different segments' radix sorting
+                // int* p_to_element = arr;
+                cout<<"Now sorting seg No."<<i<<'\r';
                 #ifdef DEBUG
-                bitset<32> bin_element(arr[j]);
-                cout<<"At seg No."<<i<<" | element No."<<j<<" | bin No."<<i_bin<<" , counter="<<count_buf[i_bin];
-                // cout<<" | bin No."<<i_bin;
-                // if(arr[j]==1585990364) cout<<" <====== B68";
-                // else if(arr[j]==1548233367) cout<< " <====== A69";
-                cout<<endl;
+                bitset<32> bin_mask(mask);
+                cout<<"n_seg = "<<i<<" | mask: "<<bin_mask<<endl;
                 #endif // DEBUG
-                // arr_bin[i_bin][count_bin[i_bin]] = arr[j];
-                // count_bin[i_bin]++;
-                arr_buf[i_bin][count_buf[i_bin]] = arr[j];
-                count_buf[i_bin]++;
-                if(count_buf[i_bin]==BUF_BIN_SIZE){ // if any buffer bin is full, write all its elements back to memory
+                for(int j=0;j<len;j++){ // inside loop for simple SORT of every segment position
+                    // get the index of target bin
+                    int i_bin = arr[j]&mask; 
+                    i_bin = i_bin >> i*RADIX;
                     #ifdef DEBUG
-                    cout<<"Buf bin No."<<i_bin<<" is full"<<endl;
+                    bitset<32> bin_element(arr[j]);
+                    cout<<"At seg No."<<i<<" | element No."<<j<<" | bin No."<<i_bin<<" , counter="<<count_buf[i_bin];
+                    // cout<<" | bin No."<<i_bin;
+                    // if(arr[j]==1585990364) cout<<" <====== B68";
+                    // else if(arr[j]==1548233367) cout<< " <====== A69";
+                    cout<<endl;
                     #endif // DEBUG
-                    for(int k=0;k<BUF_BIN_SIZE;k++){
+                    // arr_bin[i_bin][count_bin[i_bin]] = arr[j];
+                    // count_bin[i_bin]++;
+                    arr_buf[i_bin][count_buf[i_bin]] = arr[j];
+                    count_buf[i_bin]++;
+                    if(count_buf[i_bin]==BUF_BIN_SIZE){ // if any buffer bin is full, write all its elements back to memory
+                        #ifdef DEBUG
+                        cout<<"Buf bin No."<<i_bin<<" is full"<<endl;
+                        #endif // DEBUG
+                        for(int k=0;k<BUF_BIN_SIZE;k++){
+                            arr_bin[i_bin][count_bin[i_bin]] = arr_buf[i_bin][k];
+                            count_bin[i_bin]++;
+                        }
+                        count_buf[i_bin] = 0; // reset the counter of No.i_bin buffer bin
+                    }
+                }
+                for(int i_bin=0;i_bin<n_bin;i_bin++){ // write the rest elements in buffer bin back to memory
+                    for(int k=0;k<count_buf[i_bin];k++){
                         arr_bin[i_bin][count_bin[i_bin]] = arr_buf[i_bin][k];
                         count_bin[i_bin]++;
                     }
-                    count_buf[i_bin] = 0; // reset the counter of No.i_bin buffer bin
+                    count_buf[i_bin] = 0;
                 }
-            }
-            for(int i_bin=0;i_bin<n_bin;i_bin++){ // write the rest elements in buffer bin back to memory
-                for(int k=0;k<count_buf[i_bin];k++){
-                    arr_bin[i_bin][count_bin[i_bin]] = arr_buf[i_bin][k];
-                    count_bin[i_bin]++;
-                }
-                count_buf[i_bin] = 0;
-            }
-            // **Write the elements in bins back to arr (maybe later should use another arr_bin to switch)
-            int *p_tmp = arr;
-            #ifdef DEBUG
-            cout<<"Write back"<<endl;
-            #endif // DEBUG
-            for(int i_bin=0;i_bin<n_bin;i_bin++){
+                // **Write the elements in bins back to arr (maybe later should use another arr_bin to switch)
+                int *p_tmp = arr;
                 #ifdef DEBUG
-                // cout<<"Write back bin No."<<i_bin<<" total elements: "<<count_bin[i_bin]<<endl;
+                cout<<"Write back"<<endl;
                 #endif // DEBUG
-                for(int k=0;k<count_bin[i_bin];k++){
-                    int tmp = arr_bin[i_bin][k];
-                    *p_tmp = arr_bin[i_bin][k];
+                for(int i_bin=0;i_bin<n_bin;i_bin++){
                     #ifdef DEBUG
-                    // if(tmp==1585990364) cout<<" B68 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
-                    // else if(tmp==1548233367) cout<< " A69 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
+                    // cout<<"Write back bin No."<<i_bin<<" total elements: "<<count_bin[i_bin]<<endl;
                     #endif // DEBUG
-                    p_tmp++;
+                    for(int k=0;k<count_bin[i_bin];k++){
+                        int tmp = arr_bin[i_bin][k];
+                        *p_tmp = arr_bin[i_bin][k];
+                        #ifdef DEBUG
+                        // if(tmp==1585990364) cout<<" B68 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
+                        // else if(tmp==1548233367) cout<< " A69 write back, add is arr_bin["<<i_bin<<"]["<<k<<"] "<<&arr_bin[i_bin][k]<<endl;
+                        #endif // DEBUG
+                        p_tmp++;
+                    }
+                    count_bin[i_bin] = 0;
                 }
-                count_bin[i_bin] = 0;
+                // update mask
+                mask = mask << RADIX; // shift mask
+                cout<<endl;
             }
-            // update mask
-            mask = mask << RADIX; // shift mask
-            cout<<endl;
         }
-    }
-    void* thread_exec(void *p_para){
-        // int i_thread = para->i_thread;
-        thr_exec_para para = *(thr_exec_para*)p_para;
-        int block_len = N/THREAD_NUM;
-        int offset = para.i_thread*block_len;
-        #ifdef DEBUG
-        cout<<"Thread No."<<para.i_thread<<" offset: "<<offset<<endl;
-        #endif // DEBUG
-        radix_sort(para.arr, offset, block_len);
-    }
-    void* _thread_exec(void *para){
-        int threadIndex=*(int*)para;
-        int block_len=N/THREAD_NUM;
-        int offset=threadIndex*block_len;
-        #ifdef DEBUG
-        cout<<"Thread No."<<threadIndex<<" offset: "<<offset<<endl;
-        #endif // DEBUG
-        radix_sort(arr, offset, block_len);
-    }
-    void merge(int *arr, int *out_arr){
-        int block_len = N/THREAD_NUM;
-        int i_element[THREAD_NUM] = {0};
-        int min;
-        int last_i_block;
-        for(int i=0;i<N;i++){
-            min = RAND_MAX;
-            last_i_block = 0;
-            for(int i_block=0;i_block<THREAD_NUM;i_block++){
-                if(i_element[i_block]>=block_len) continue;
-                if (min > arr[i_block * block_len + i_element[i_block]]){ // find new min
-                    min = arr[i_block * block_len + i_element[i_block]];
-                    last_i_block = i_block;
-                } 
-            }
-
+    #endif
+    #ifdef MT_R_SORT
+        void* thread_exec_rsort(void *p_para){
+            // int i_thread = para->i_thread;
+            rsort_thr_para para = *(rsort_thr_para*)p_para;
+            int block_len = N/THREAD_NUM;
+            int offset = para.i_thread*block_len;
             #ifdef DEBUG
-            cout<<"============================"<<endl;
-            cout<<min<<", from block."<<last_i_block<<".["<<i_element[last_i_block]-1<<"]"<<" <<<<<<<<<<<< MIN <<"<<endl;
-            for(int i_block=0;i_block<THREAD_NUM;i_block++){
-                cout<<arr[i_block * block_len + i_element[i_block]]<<", from block."<<i_block<<".["<<i_element[i_block]<<"]"<<endl;
+            cout<<"Thread No."<<para.i_thread<<" offset: "<<offset<<endl;
+            #endif // DEBUG
+            radix_sort(para.arr, offset, block_len);
+        }
+        void merge(int *arr, int *out_arr){
+            int block_len = N/THREAD_NUM;
+            int i_element[THREAD_NUM] = {0};
+            int min;
+            int last_i_block;
+            for(int i=0;i<N;i++){
+                min = RAND_MAX;
+                last_i_block = 0;
+                for(int i_block=0;i_block<THREAD_NUM;i_block++){
+                    if(i_element[i_block]>=block_len) continue;
+                    if (min > arr[i_block * block_len + i_element[i_block]]){ // find new min
+                        min = arr[i_block * block_len + i_element[i_block]];
+                        last_i_block = i_block;
+                    } 
+                }
+
+                #ifdef DEBUG
+                cout<<"============================"<<endl;
+                cout<<min<<", from block."<<last_i_block<<".["<<i_element[last_i_block]-1<<"]"<<" <<<<<<<<<<<< MIN <<"<<endl;
+                for(int i_block=0;i_block<THREAD_NUM;i_block++){
+                    cout<<arr[i_block * block_len + i_element[i_block]]<<", from block."<<i_block<<".["<<i_element[i_block]<<"]"<<endl;
+                }
+                #endif // DEBUG
+                out_arr[i] = min;
+                i_element[last_i_block]++;
+            }
+        }
+    #endif
+    #ifdef M_SORT
+        void* unit_merge(void* vpara){ // len = M/THREAD_NUM, M = C/2e (C is the L2 Cache size)
+            msort_thr_para *para = (msort_thr_para*)vpara;
+            int n_subarr = para->len, len = para->len; //
+            #ifdef DEBUG
+            cout<<"-------------len = "<<len<<endl;
+            #endif
+            int l_subarr = 1;
+            int *arr = para->unsorted_arr;
+            int *out_arr = para->sorted_arr;
+            #ifdef OUT_LOG
+                fstream LOG;
+                LOG.open("LOG_T"+to_string(para->i_thread),ios::out);
+            #endif
+            #ifdef DEBUG
+            cout<<"init out_arr: "<<endl;
+            for(int i=0;i<len;i++){
+                cout<<out_arr[i]<<endl;
             }
             #endif // DEBUG
-            out_arr[i] = min;
-            i_element[last_i_block]++;
+            for(int i=0;;i++){
+                #ifdef DEBUG
+                    cout<<">>>>> T."<<para->i_thread <<" Merge iteration NO."<<i<<" | n_subarr = "<<n_subarr<<endl;
+                    #ifdef OUT_LOG
+                        LOG<<">>>>> T."<<para->i_thread <<" Merge iteration NO."<<i<<" | n_subarr = "<<n_subarr<<endl;
+                    #endif
+                #endif // DEBUG
+                for(int i_subarr=0;i_subarr<n_subarr;i_subarr+=2){
+                    #ifdef DEBUG
+                        cout<<"i_subarr = "<<i_subarr<<endl;
+                    #endif // DEBUG
+                    int i_out = 0; // the idx of out arr
+                    for(int i_in1=0, i_in2=0;;){
+                        #ifdef DEBUG
+                            cout<<"i_in1 = "<<i_in1<<" | in_2 = "<<i_in2<<" | i_out = "<<i_out<<endl;
+                            #ifdef OUT_LOG
+                            LOG<<"i_in1 = "<<i_in1<<" | in_2 = "<<i_in2<<" | i_out = "<<i_out<<endl;
+                            #endif                            
+                        #endif // DEBUG
+
+                        // if any subarr is empty
+                        if(!(i_in1<l_subarr)){
+                            while(i_in2<l_subarr){
+                                out_arr[i_subarr*l_subarr+i_out] = arr[(i_subarr+1)*l_subarr+i_in2];
+                                i_in2++;
+                                i_out++;
+                            }
+                            break;
+                        }
+                        else if (!(i_in2<l_subarr)) {
+                            while(i_in1<l_subarr){
+                                out_arr[i_subarr*l_subarr+i_out] = arr[i_subarr*l_subarr+i_in1];
+                                i_in1++;
+                                i_out++;
+                            }
+                            break;
+                        }
+
+                        if(arr[i_subarr*l_subarr+i_in1]<arr[(i_subarr+1)*l_subarr+i_in2]){ // a<b
+                            out_arr[i_subarr*l_subarr+i_out] = arr[i_subarr*l_subarr+i_in1];
+                            i_in1++;
+                        }
+                        else{
+                            out_arr[i_subarr*l_subarr+i_out] = arr[(i_subarr+1)*l_subarr+i_in2];
+                            i_in2++;
+                        }
+                        i_out++;
+                    }
+                    #ifdef DEBUG
+                    for(int j=0;j<len;j++){
+                        cout<<"arr: "<<arr[j]<<" | "<<"out: "<<out_arr[j]<<endl;
+                    }
+                    #ifdef OUT_LOG
+                    for (int j = 0; j < len; j++){
+                        LOG << "arr: " << arr[j] << " | " << "out: " << out_arr[j] << endl;
+                    }
+                    #endif
+                    #endif // DEBUG
+
+                }
+                n_subarr /= 2;
+                l_subarr *= 2;
+                if(n_subarr<2){
+                    para->sorted_arr = out_arr;
+                    break;
+                }
+                int *tmp = arr; // switch two pointers for next turn of merge
+                arr = out_arr;
+                out_arr = tmp;
+            }
+            #ifdef OUT_LOG
+            LOG.close();
+            #endif
         }
-    }
+    #endif
+    #ifdef MT_M_SORT
+        int *msort_thread_assign(int *arr, int *sorted_arr, const int block_size, const int n_thread){
+            pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM];
+            msort_thr_para *para_list = new msort_thr_para[n_thread];
+            int len = block_size/n_thread;
+            for(int i=0;i<n_thread;i++){
+                para_list[i].unsorted_arr = arr+i*len;
+                para_list[i].sorted_arr = sorted_arr+i*len;
+                #ifdef DEBUG
+                cout<<"===========================CHECK OFFSET"<<endl;
+                cout<<"i*block_size = "<<i*block_size<<endl;
+                #endif
+                para_list[i].len = len;
+                para_list[i].i_thread = i;
+                #ifdef DEBUG
+                cout<<"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCHECK"<<endl;
+                for(int j=0;j<para_list[i].len;j++){
+                    cout<<para_list[i].unsorted_arr[j]<<endl;
+                }
+                #endif
+            }
+            for(int i=0;i<n_thread;i++){
+                ret[i] = pthread_create(&id_thread[i], NULL, unit_merge, (void*)(&para_list[i]));
+                // ret[i] = pthread_create(&id_thread[i], NULL, _thread_exec, (void*)(idx_thread+i));
+                if(ret[i]!=0){
+                    cout<<"ERROR: thread No."<<i<<" create failed"<<endl;
+                    break;
+                }
+            }
+            for(int i=0;i<n_thread;i++){
+                pthread_join(id_thread[i],NULL);
+            }
+            
+            #ifdef DEBUG
+            cout<<"SORTED"<<endl;
+            for(int i=0;i<block_size;i++){
+                cout<<para_list[0].sorted_arr[i]<<endl;
+            }
+            #endif // DEBUG
+            return para_list[0].sorted_arr;
+        }
+    #endif
 #endif

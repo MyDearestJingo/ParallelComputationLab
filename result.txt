@@ -1,4 +1,4 @@
-####### Matrix #######
+﻿####### Matrix #######
 NON_OPT: 
 @MyDearest-RTX
 Size: 512 Time: 687 Trace: 63133.9
@@ -11,7 +11,7 @@ Size: 512 Time: 789 Trace: 63133.9
 Size: 1024 Time: 6989 Trace: 252536
 Size: 2048 Time: 145815 Trace: 1.0103e+06
 Size: 4096 Time: 1461783 Trace: 4.04097e+06
-
+Size: 4096 Time: 11122339 Trace: 4.04097e+06
 
 
 TILE: 

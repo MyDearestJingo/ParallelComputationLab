@@ -97,3 +97,18 @@
 = IDEA
 - 矩阵的BLOCK+多线程，SSE+多线程等，计划改用固定C框，移动A、B框来实现并行，由此每个线程都能完成C中一个BLOCK的完整计算而无需
     依赖其他线程的运算结果；
+
+@May 7th 22:25
+= 已完成
+- struct msort_thr_para
+    - 用于向线程传递必要的参数
+- unit_merge()多线程化改造
+    - 返回值存于传入的msort_thr_para指针指向的结构体中
+- int *msort_thread_assign(int *org_arr, int *tmp_arr, const int block_size, const int n_thread);
+    - 用于将划分后的数组块（长度为block_size）等长分配给指定数量（n_thread）的线程执行归并排序；
+    - 执行完成后将会得到n_thread个有序子序列，至于是存在于org_arr还是tmp_arr指向的数组中取决于线程中归并的次数
+        - 当次数为2的倍数时，存于org_arr中，否则在tmp_arr中
+    - 但返回的int* 指针必定指向只含有n_thread个子序列的数组（也就是目标数组）
+= IDEA
+- 多线程调试：
+    - 由于多线程同时向标准输入输出流添加数据的话将会造成混乱，故而可以采取让每个线程独立输出一个日志文件来进行调试；
