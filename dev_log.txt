@@ -112,3 +112,9 @@
 = IDEA
 - 多线程调试：
     - 由于多线程同时向标准输入输出流添加数据的话将会造成混乱，故而可以采取让每个线程独立输出一个日志文件来进行调试；
+
+@May 8th 10:01
+= 已完成
+- unit_merge()、struct msort_thread_para、msort_thread_assign()对有序子序列多线程归并改造
+    - msort_thread_assign()将根据输入的block_size和n_subarr_of_black之间的关系决定unit_merge()执行的是底层归并还是对有序子
+        序列归并；

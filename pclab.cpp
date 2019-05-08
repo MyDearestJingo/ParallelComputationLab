@@ -11,7 +11,7 @@
 
 // #define MATRIX
 #define SORT
-// #define DEBUG
+#define DEBUG
 #define OUT_LOG
 
 using namespace std;
@@ -196,13 +196,14 @@ struct timeval end_tv;
         typedef struct msort_thr_para{
             int *unsorted_arr;
             int *sorted_arr;
-            int len;
+            int len;            // total length of unsorted array
+            int n_sub;          // num of sorted sub-array need to be merged
             int i_thread;
         }msort_thr_para;
         void* unit_merge(void* para); // For single thread
     #endif
     #ifdef MT_M_SORT
-        int *msort_thread_assign(int *org_arr, int *tmp_arr, const int block_size, const int n_thread);
+        int *msort_thread_assign(int *org_arr, int *tmp_arr, const int block_size, const int n_subarr_of_block, const int n_thread);
     #endif
 
 #endif 
@@ -383,20 +384,55 @@ int main(){
                 cout<<arr[i]<<endl;
             }
             #endif // DEBUG
-            int *tmp_arr = new int[N];
+            int *swap = new int [N];
+            int *tmp_arr = swap;
             #ifdef MT_M_SORT
-                arr = msort_thread_assign(arr,tmp_arr,N,THREAD_NUM);
-                #ifdef DEBUG
-                cout<<" === tmp_arr ==="<<endl;
-                for(int i=0;i<N;i++){
-                    cout<<tmp_arr[i]<<endl;
+                int *sorted = msort_thread_assign(arr,tmp_arr,N,N,THREAD_NUM);
+                if(sorted==swap){
+                    tmp_arr = arr;
                 }
-                cout<<" === arr ===="<<endl;
-                for(int i=0;i<N;i++){
-                    cout<<arr[i]<<endl;
+                else tmp_arr = swap;
+                #ifdef DEBUG
+                    cout<<" === tmp_arr ==="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<tmp_arr[i]<<endl;
+                    }
+                    cout<<" === sorted ===="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<sorted[i]<<endl;
                 }
                 #endif // DEBUG
-                
+                sorted = msort_thread_assign(sorted, tmp_arr, N, THREAD_NUM, 2);
+                if(sorted==swap){
+                    tmp_arr = arr;
+                }
+                else tmp_arr = swap;
+                #ifdef DEBUG
+                    cout<<" === tmp_arr ==="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<tmp_arr[i]<<endl;
+                    }
+                    cout<<" === sorted ===="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<sorted[i]<<endl;
+                    }
+                #endif // DEBUG
+                sorted = msort_thread_assign(sorted, tmp_arr, N, 2, 1);
+                if(sorted==swap){
+                    tmp_arr = arr;
+                }
+                else tmp_arr = swap;
+                #ifdef DEBUG
+                    cout<<" === tmp_arr ==="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<tmp_arr[i]<<endl;
+                    }
+                    cout<<" === sorted ===="<<endl;
+                    for(int i=0;i<N;i++){
+                        cout<<sorted[i]<<endl;
+                    }
+                #endif // DEBUG
+                arr = sorted;
             #else
                 msort_thr_para para;
                 para.len = N;
@@ -702,11 +738,12 @@ int main(){
     #ifdef M_SORT
         void* unit_merge(void* vpara){ // len = M/THREAD_NUM, M = C/2e (C is the L2 Cache size)
             msort_thr_para *para = (msort_thr_para*)vpara;
-            int n_subarr = para->len, len = para->len; //
+            int n_subarr = para->n_sub; // num of sub-array need to be merge
+            int len = para->len; // length of entire unsorted array
             #ifdef DEBUG
             cout<<"-------------len = "<<len<<endl;
             #endif
-            int l_subarr = 1;
+            int l_subarr = len/n_subarr; // length of sub-array
             int *arr = para->unsorted_arr;
             int *out_arr = para->sorted_arr;
             #ifdef OUT_LOG
@@ -795,11 +832,12 @@ int main(){
         }
     #endif
     #ifdef MT_M_SORT
-        int *msort_thread_assign(int *arr, int *sorted_arr, const int block_size, const int n_thread){
+        int *msort_thread_assign(int *arr, int *sorted_arr, const int block_size, const int n_subarr_of_block, int n_thread){
+            if(n_thread>(n_subarr_of_block+1)/2) n_thread = (n_subarr_of_block+1)/2;
             pthread_t id_thread[THREAD_NUM], ret[THREAD_NUM];
             msort_thr_para *para_list = new msort_thr_para[n_thread];
-            int len = block_size/n_thread;
-            for(int i=0;i<n_thread;i++){
+            int len = block_size/n_thread; // length of the array need a thread to merge
+            for(int i=0;i<n_thread;i++){ // for the foundamental merge
                 para_list[i].unsorted_arr = arr+i*len;
                 para_list[i].sorted_arr = sorted_arr+i*len;
                 #ifdef DEBUG
@@ -807,6 +845,7 @@ int main(){
                 cout<<"i*block_size = "<<i*block_size<<endl;
                 #endif
                 para_list[i].len = len;
+                para_list[i].n_sub = n_subarr_of_block/n_thread;
                 para_list[i].i_thread = i;
                 #ifdef DEBUG
                 cout<<"CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCHECK"<<endl;
