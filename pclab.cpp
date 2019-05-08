@@ -208,7 +208,6 @@ struct timeval end_tv;
 
 #endif 
 
-
 int main(){
     #ifdef MATRIX
         for(int iTest = 0; iTest<nTest; iTest++){
@@ -255,10 +254,7 @@ int main(){
                 // if (per_diff<0.001 || per_diff>-0.001) cout << "True" << endl;
                 // else cout << "False, trace = " << trace << ", trace_val = " << trace_val << endl;
                 cout << "Test #"<< i <<" | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
-                fstream FILE;
-                FILE.open("r.txt",ios::out);
-                FILE << "Test #" << i << " | Size: " << N << " Time: " << timecost << " Trace: " << trace << endl;
-                FILE.close();
+                
                 //释放内存
                 delete a;
                 delete b;
@@ -366,7 +362,7 @@ int main(){
             // radix_sort(arr,0,N);
             merge(arr, result_arr);
             arr = result_arr;
-        #else
+        #else // one way radix sort
             // // Start sorting
             // radix_sort(arr, 0, N);
             // #ifdef DEBUG
@@ -387,7 +383,7 @@ int main(){
             int *swap = new int [N];
             int *tmp_arr = swap;
             #ifdef MT_M_SORT
-                int *sorted = msort_thread_assign(arr,tmp_arr,N,N,THREAD_NUM);
+                int *sorted = msort_thread_assign(arr, tmp_arr, N, N, THREAD_NUM);
                 if(sorted==swap){
                     tmp_arr = arr;
                 }
@@ -433,6 +429,41 @@ int main(){
                     }
                 #endif // DEBUG
                 arr = sorted;
+
+                int block_size = 200;
+                int n_block = N/block_size;
+                int *p_org = arr;
+                int *p_swap = swap;
+                int  *p_tmp = swap;
+                for(int i_block=0;i_block<n_block;i_block++){ // bottom block merge sort
+                    *p_org = arr + i_block*block_size;
+                    *p_swap = tmp_arr + i_block*block_size;
+                    *p_tmp = msort_thread_assign(p_org, p_swap, block_size, block_size, THREAD_NUM);
+                    if(p_tmp == p_swap) {
+                        p_tmp = p_org;
+                        p_org = p_swap;
+                        p_swap = p_tmp;
+                    }
+                    int n_subarr = THREAD_NUM;
+                    while(n_subarr>1){
+                        p_tmp = msort_thread_assign(p_org, p_swap, block_size, n_subarr, THREAD_NUM);
+                        if(p_tmp == p_swap) {
+                            p_tmp = p_org;
+                            p_org = p_swap;
+                            p_swap = p_tmp;
+                        }
+                        n_subarr >> 1;
+                    }
+                } // now we get n_block sorted sub-arrays
+                while(n_block>1){ // Finally merge n_block sorted sub-arrays
+                    p_tmp = msort_thread_assign(p_org, p_swap, N, n_block,THREAD_NUM);
+                    if(p_tmp==p_swap){
+                        p_tmp = p_org;
+                        p_org = p_swap;
+                        p_swap = p_tmp;
+                    }
+                    n_block >> 1;
+                }
             #else
                 msort_thr_para para;
                 para.len = N;
@@ -450,17 +481,16 @@ int main(){
             #endif // DEBUG
         #endif
 
-
         // Efficiency monitor ends
         ////Linux
         end_tv.tv_usec = 0;
         gettimeofday(&end_tv, NULL);
         timecost = (end_tv.tv_sec - start_tv.tv_sec) * 1000 + (end_tv.tv_usec - start_tv.tv_usec) / 1000;
         cout<<"Time cost: "<<timecost<<endl;
-    #endif    
 
-    if(check(arr,N, unsorted_arr_path,sorted_arr_path)) cout<<"ALL GREEN"<<endl;
-    else cout<<"Failure"<<endl;
+        if(check(arr,N, unsorted_arr_path,sorted_arr_path)) cout<<"ALL GREEN"<<endl;
+        else cout<<"Failure"<<endl;
+    #endif    
     return 0;
 }
 #ifdef MATRIX
@@ -537,7 +567,6 @@ int main(){
                 }
                 iBBox++; // BBox移动到下一个位置
             }
-
             break;
         }
         case SIMD:
@@ -599,6 +628,24 @@ int main(){
                 iCBox += nBox; // CBox向下移动一个Box位置
             }
             iBBox++; // BBox移动到下一个位置
+        }
+    }
+    void mthread_matrix_simd(float *a, float *b, float *c, int N){
+        int n_box = N/_VF32_SIZE;
+        int i_abox=0, i_bbox = 0, i_cbox = 0;
+        #pragma omp parallel for num_threads(n_thread)
+        for(;i_cbox<n_box*n_box;i_cbox++){ // Keep C box and shift A, B boxes
+            i_abox = i_cbox/n_box + 0; // the row of C box determine the row of A box
+            i_bbox = 0 + i_cbox%n_box; // the col of C box determine the col of B box
+            for(int i_box=0;i_box<n_box;i_box++){
+                int *p_a = &a[_VF32_SIZE*(iABox/nBox)+_VF32_SIZE*N*(iABox%nBox)];
+                int *p_b = &b[_VF32_SIZE*(iBBox/nBox)+_VF32_SIZE*N*(iBBox%nBox)];
+                int *p_c = &c[_VF32_SIZE*(iCBox/nBox)+_VF32_SIZE*N*(iCBox%nBox)];
+                matrixF32_madd(p_c, p_a, p_b, N);
+                i_abox++;           // A box shift right
+                i_bbox += n_box;    // B box shift down
+            }
+            i_cbox++; // C box shift right
         }
     }
 #endif
