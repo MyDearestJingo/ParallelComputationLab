@@ -5,13 +5,14 @@
 #include <string>
 #include <bitset>
 #include <algorithm>
+#include <stdio.h>
 #include <omp.h>
 #include "SIMDLib/simd_arch.h"
 #include "SIMDLib/VL2/vl2_matrix.h"
 
-// #define MATRIX
-#define SORT
-#define DEBUG
+#define MATRIX
+// #define SORT
+// #define DEBUG
 #define OUT_LOG
 
 using namespace std;
@@ -44,9 +45,10 @@ struct timeval end_tv;
         TILE,			//矩阵行读优化
         BLOCK,		//矩阵分块
         SIMD,			//SIMD指令优化
+        SIMD_MUT,       //SIMD指令+多线程
         GPU,			//GPU加速
     };
-    void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE);
+    void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE, int );
     void matrix_mut_simd(float *a, float *b, float *c, int N);
     float matrix_Tr(float *c, int N) {
         float tmp = 0;
@@ -55,27 +57,29 @@ struct timeval end_tv;
         }
         return tmp;
     }
+    void mthread_matrix_simd(float *a, float *b, float *c, int N, int n_thread);
     /* CONFIG */
     // const int N_list_size = 5;
     // static int N_list[N_list_size] = { 512,1024,2048,4096,8192};
     const int N_list_size = 1;
-    int N_list[1] = {8192}; 
-    int nTest = 1;
+    int N_list[1] = {2048}; 
+    int nTest = 5;
     int tolTime = 0;
     int turn = 0;
-    int block_size = 32;
-    static optiType opt = NON_OPT; // optimation type
-    static int n_thread = 8;
+    int block_size = 4;
+    static optiType opt = SIMD_MUT; // optimation type
+    int n_thread = 12;
 #endif
 
 #ifdef SORT
     /* ==== CONFIG ==== */
-    #define THREAD_NUM 4
+    #define THREAD_NUM 8
     #define RADIX 8 // size of radix in bits, determine the length of mask
-    #define N 32 // target: 1000000000
+    #define N 1073741824 // target: 1000000000
     #define SEED 0.3
     #define BUF_BIN_SIZE 16 // number of ints in per cache buf, which is no more than (cache_size/n_bins)/sizeof(int)
     #define L2_CACHE 256 // the size of L2 cache in KB
+    #define BLOCK_SIZE 32*1024
     #define DATA_DIR "./sort_data/"
 
     // #define R_SORT
@@ -233,7 +237,7 @@ int main(){
                 gettimeofday(&start_tv,NULL);
 
                 //开始计算
-                matrix_Mut(a, b, c, N, opt);
+                matrix_Mut(a, b, c, N, opt, n_thread);
                 // matrix_mut_simd(a, b, c, N);
 
                 //效率监控结束
@@ -253,7 +257,7 @@ int main(){
                 float per_diff = (trace - trace_val) / trace;
                 // if (per_diff<0.001 || per_diff>-0.001) cout << "True" << endl;
                 // else cout << "False, trace = " << trace << ", trace_val = " << trace_val << endl;
-                cout << "Test #"<< i <<" | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
+                cout << "Test #"<< iTest+1 <<" | Threads: "<<n_thread<<" | Block Size: "<<block_size<< " | Size: " << N << " Time: " << timecost << " Trace: "<< trace << endl;
                 
                 //释放内存
                 delete a;
@@ -262,6 +266,7 @@ int main(){
             }
             // cout<<"Test #"<<iTest<<" Complete"<<endl;
             tolTime += timecost;
+            block_size = block_size << 1;
         }
         cout << "Average Time: "<<tolTime/nTest<<endl;
     #endif
@@ -383,62 +388,65 @@ int main(){
             int *swap = new int [N];
             int *tmp_arr = swap;
             #ifdef MT_M_SORT
-                int *sorted = msort_thread_assign(arr, tmp_arr, N, N, THREAD_NUM);
-                if(sorted==swap){
-                    tmp_arr = arr;
-                }
-                else tmp_arr = swap;
-                #ifdef DEBUG
-                    cout<<" === tmp_arr ==="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<tmp_arr[i]<<endl;
-                    }
-                    cout<<" === sorted ===="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<sorted[i]<<endl;
-                }
-                #endif // DEBUG
-                sorted = msort_thread_assign(sorted, tmp_arr, N, THREAD_NUM, 2);
-                if(sorted==swap){
-                    tmp_arr = arr;
-                }
-                else tmp_arr = swap;
-                #ifdef DEBUG
-                    cout<<" === tmp_arr ==="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<tmp_arr[i]<<endl;
-                    }
-                    cout<<" === sorted ===="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<sorted[i]<<endl;
-                    }
-                #endif // DEBUG
-                sorted = msort_thread_assign(sorted, tmp_arr, N, 2, 1);
-                if(sorted==swap){
-                    tmp_arr = arr;
-                }
-                else tmp_arr = swap;
-                #ifdef DEBUG
-                    cout<<" === tmp_arr ==="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<tmp_arr[i]<<endl;
-                    }
-                    cout<<" === sorted ===="<<endl;
-                    for(int i=0;i<N;i++){
-                        cout<<sorted[i]<<endl;
-                    }
-                #endif // DEBUG
-                arr = sorted;
+            /*
+                // int *sorted = msort_thread_assign(arr, tmp_arr, N, N, THREAD_NUM);
+                // if(sorted==swap){
+                //     tmp_arr = arr;
+                // }
+                // else tmp_arr = swap;
+                // #ifdef DEBUG
+                //     cout<<" === tmp_arr ==="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<tmp_arr[i]<<endl;
+                //     }
+                //     cout<<" === sorted ===="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<sorted[i]<<endl;
+                // }
+                // #endif // DEBUG
+                // sorted = msort_thread_assign(sorted, tmp_arr, N, THREAD_NUM, 2);
+                // if(sorted==swap){
+                //     tmp_arr = arr;
+                // }
+                // else tmp_arr = swap;
+                // #ifdef DEBUG
+                //     cout<<" === tmp_arr ==="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<tmp_arr[i]<<endl;
+                //     }
+                //     cout<<" === sorted ===="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<sorted[i]<<endl;
+                //     }
+                // #endif // DEBUG
+                // sorted = msort_thread_assign(sorted, tmp_arr, N, 2, 1);
+                // if(sorted==swap){
+                //     tmp_arr = arr;
+                // }
+                // else tmp_arr = swap;
+                // #ifdef DEBUG
+                //     cout<<" === tmp_arr ==="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<tmp_arr[i]<<endl;
+                //     }
+                //     cout<<" === sorted ===="<<endl;
+                //     for(int i=0;i<N;i++){
+                //         cout<<sorted[i]<<endl;
+                //     }
+                // #endif // DEBUG
+                // arr = sorted;
+            */
 
-                int block_size = 200;
+                int block_size = BLOCK_SIZE;
                 int n_block = N/block_size;
                 int *p_org = arr;
                 int *p_swap = swap;
                 int  *p_tmp = swap;
                 for(int i_block=0;i_block<n_block;i_block++){ // bottom block merge sort
-                    *p_org = arr + i_block*block_size;
-                    *p_swap = tmp_arr + i_block*block_size;
-                    *p_tmp = msort_thread_assign(p_org, p_swap, block_size, block_size, THREAD_NUM);
+                    int offset = i_block*block_size;
+                    p_org = arr + offset;
+                    p_swap = tmp_arr + offset;
+                    p_tmp = msort_thread_assign(p_org, p_swap, block_size, block_size, THREAD_NUM);
                     if(p_tmp == p_swap) {
                         p_tmp = p_org;
                         p_org = p_swap;
@@ -452,9 +460,20 @@ int main(){
                             p_org = p_swap;
                             p_swap = p_tmp;
                         }
-                        n_subarr >> 1;
+                        n_subarr = n_subarr >> 1;
                     }
                 } // now we get n_block sorted sub-arrays
+                // reset the points back to head
+                int reset_offset = (n_block-1)*block_size;
+                p_org -= reset_offset;
+                p_tmp -= reset_offset;
+                p_swap -= reset_offset;
+                #ifdef DEBUG
+                cout<<" ======== after bottom block merge sort ========="<<endl;
+                for(int i=0;i<N;i++){
+                    cout<<p_org[i]<<endl;
+                }
+                #endif // DEBUG
                 while(n_block>1){ // Finally merge n_block sorted sub-arrays
                     p_tmp = msort_thread_assign(p_org, p_swap, N, n_block,THREAD_NUM);
                     if(p_tmp==p_swap){
@@ -462,8 +481,9 @@ int main(){
                         p_org = p_swap;
                         p_swap = p_tmp;
                     }
-                    n_block >> 1;
+                    n_block = n_block >> 1;
                 }
+                arr = p_org;
             #else
                 msort_thr_para para;
                 para.len = N;
@@ -494,7 +514,7 @@ int main(){
     return 0;
 }
 #ifdef MATRIX
-    void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE) {
+    void matrix_Mut(float *a, float *b, float *c, int N, optiType TYPE, int n_thread) {
         switch (TYPE)
         {
         case NON_OPT:
@@ -509,14 +529,14 @@ int main(){
             break;
         case MUTI_THREAD:
             #pragma omp parallel for num_threads(n_thread)
-                for (int i = 0; i < N; i++) {
-                    for (int j = 0; j < N; j++) {
-                        c[i*N + j] = 0.0;
-                        for (int k = 0; k < N; k++) {
-                            c[i*N + j] += a[i*N + k] * b[k*N + j];
-                        }
+            for (int i = 0; i < N; i++) {
+                for (int j = 0; j < N; j++) {
+                    c[i*N + j] = 0.0;
+                    for (int k = 0; k < N; k++) {
+                        c[i*N + j] += a[i*N + k] * b[k*N + j];
                     }
                 }
+            }
             break;
         
         
@@ -532,69 +552,48 @@ int main(){
             break;
         
         case BLOCK:{
-            int nBox = N/block_size; // 当前block_size大小下，分块后矩阵的规模
-            int iABox = 0, iBBox = 0, iCBox = 0; // 原A、B、C矩阵分块后得到的分块矩阵的索引,Box对应与原矩阵就是一个方形选框
-            for(int i=0;i<nBox*nBox;i++){ // 顶层循环：固定BBox，纵向移动ABox和CBox
-                iABox = iBBox/nBox+0; // 由BBox所在行决定ABox所在列
-                iCBox = iBBox%nBox+0; // 由BBox所在列决定CBox所在列
-                //#pragma omp parallel for num_threads(n_thread)
-                for(int j=0;j<nBox;j++){
-                    #ifdef _DEBUG_INFO
-                        cout<<"iABox: "<<iABox/nBox<<','<<iABox%nBox<<'\t';
-                        cout<<"iBBox: "<<iBBox/nBox<<','<<iBBox%nBox<<'\t';
-                        cout<<"iCBox: "<<iCBox/nBox<<','<<iCBox%nBox<<'\t';
+            int n_box = N/block_size;
+            // int i_abox=0, i_bbox = 0, i_cbox = 0;
+            #pragma omp parallel for num_threads(n_thread)
+            for(int i_cbox=0;i_cbox<(n_box*n_box);i_cbox++){// Keep C box and shift A, B boxes
+            // while(i_cbox<n_box*n_box) { // Keep C box and shift A, B boxes
+                int i_abox = (i_cbox/n_box) * n_box + 0; // the row of C box determine the row of A box
+                int i_bbox = 0 + i_cbox%n_box; // the col of C box determine the col of B box
+                for(int i_box=0;i_box<n_box;i_box++){
+                    int idxA = block_size*(i_abox/n_box)+block_size*N*(i_abox%n_box);
+                    int idxB = block_size*(i_bbox/n_box)+block_size*N*(i_bbox%n_box);
+                    int idxC = block_size*(i_cbox/n_box)+block_size*N*(i_cbox%n_box);
+                    #ifdef DEBUG
+                        // cout<<"============================================================================"<<endl;
+                        // cout<<"i_abox: "<<i_abox/n_box<<','<<i_abox%n_box<<'\t';
+                        // cout<<"i_bbox: "<<i_bbox/n_box<<','<<i_bbox%n_box<<'\t';
+                        // cout<<"i_cbox: "<<i_cbox/n_box<<','<<i_cbox%n_box<<'\t';
+                        // cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
+                        // cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
+                        // cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
+                        printf("thread No.%d | i_abox: %d,%d | i_bbox: %d,%d | i_cbox: %d,%d | \n",
+                            omp_get_thread_num(), i_abox/n_box,i_abox%n_box, i_bbox/n_box,i_bbox%n_box, i_cbox/n_box,i_cbox%n_box);
                     #endif
-                    // 由iBox计算Box内第一个元素在原矩阵的索引：idx_Element = x_idx + N * y_idx
-                    int idxA = block_size*(iABox/nBox)+block_size*N*(iABox%nBox);
-                    int idxB = block_size*(iBBox/nBox)+block_size*N*(iBBox%nBox);
-                    int idxC = block_size*(iCBox/nBox)+block_size*N*(iCBox%nBox);
-                    #ifdef _DEBUG_INFO
-                        cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
-                        cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
-                        cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
-                    #endif
-                        for (int i = 0; i < block_size; i++){
-                            for (int j = 0; j < block_size; j++){
-                                // c[idxC + i * N + j] = 0.0;
-                                for (int k = 0; k < block_size; k++){
-                                    c[idxC + i * N + j] += 
-                                        a[idxA + i * N + k] * b[idxB + k * N + j];
-                                }
+                    for (int i = 0; i < block_size; i++){
+                        for (int j = 0; j < block_size; j++){
+                            // c[idxC + i * N + j] = 0.0;
+                            for (int k = 0; k < block_size; k++){
+                                c[idxC + i * N + j] += 
+                                    a[idxA + i * N + k] * b[idxB + k * N + j];
                             }
                         }
-                        iABox += nBox; // ABox向下移动一个Box位置
-                        iCBox += nBox; // CBox向下移动一个Box位置
+                    }
+                    i_abox++;           // A box shift right
+                    i_bbox += n_box;    // B box shift down
                 }
-                iBBox++; // BBox移动到下一个位置
             }
             break;
         }
         case SIMD:
-            /*
-                // float *pA = a;
-                // float *pB = b;
-                // float *pC = c;
-                // int idxA = 0;
-                // int idxB = 0;
-                // int idxC = 0;
-                // for(int i=0;i<N*N/(_VF32_SIZE*_VF32_SIZE);i++){
-                // 	pB = b+idxB;
-                // 	idxA = idxB/N; pA = a+idxA;
-                // 	idxC = idxB%N; pC = c+idxC;
-                // 	for(int j=0;j<N/_VF32_SIZE;j++){
-                // 		cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
-                // 		cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
-                // 		cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
-                // 		matrixF32_madd(pC, pA, pB, N);				
-                // 		idxA += N*_VF32_SIZE; pA = a+idxA;
-                // 		idxC += N*_VF32_SIZE; pC = c+idxC;
-                // 	}
-                // 	idxB += _VF32_SIZE;
-                // 	idxB = (idxB/N)*_VF32_SIZE*N + idxB%N;
-                // }
-            */
             matrix_mut_simd(a,b,c,N);
             break;
+        case SIMD_MUT:
+            mthread_matrix_simd(a,b,c,N,n_thread);
         case GPU:
             break;
         default:
@@ -602,51 +601,70 @@ int main(){
         }
     }
     void matrix_mut_simd(float *a, float *b, float *c, int N){
-        int nBox = N/_VF32_SIZE; // 当前_VF32_SIZE大小下，分块后矩阵的规模
-        int iABox = 0, iBBox = 0, iCBox = 0; // 原A、B、C矩阵分块后得到的分块矩阵的索引,Box对应与原矩阵就是一个方形选框
-        for(int i=0;i<nBox*nBox;i++){ // 顶层循环：固定BBox，纵向移动ABox和CBox
-            iABox = iBBox/nBox+0; // 由BBox所在行决定ABox所在列
-            iCBox = iBBox%nBox+0; // 由BBox所在列决定CBox所在列
+        int n_box = N/_VF32_SIZE; // 当前_VF32_SIZE大小下，分块后矩阵的规模
+        int i_abox = 0, i_bbox = 0, i_cbox = 0; // 原A、B、C矩阵分块后得到的分块矩阵的索引,Box对应与原矩阵就是一个方形选框
+        for(int i=0;i<n_box*n_box;i++){ // 顶层循环：固定BBox，纵向移动ABox和CBox
+            i_abox = i_bbox/n_box+0; // 由BBox所在行决定ABox所在列
+            i_cbox = i_bbox%n_box+0; // 由BBox所在列决定CBox所在列
             //#pragma omp parallel for num_threads(n_thread)
-            for(int j=0;j<nBox;j++){
-                #ifdef _DEBUG_INFO
-                    cout<<"iABox: "<<iABox/nBox<<','<<iABox%nBox<<'\t';
-                    cout<<"iBBox: "<<iBBox/nBox<<','<<iBBox%nBox<<'\t';
-                    cout<<"iCBox: "<<iCBox/nBox<<','<<iCBox%nBox<<'\t';
-                #endif
+            for(int j=0;j<n_box;j++){
+
                 // 由iBox计算Box内第一个元素在原矩阵的索引：idx_Element = x_idx + N * y_idx
-                int idxA = _VF32_SIZE*(iABox/nBox)+_VF32_SIZE*N*(iABox%nBox);
-                int idxB = _VF32_SIZE*(iBBox/nBox)+_VF32_SIZE*N*(iBBox%nBox);
-                int idxC = _VF32_SIZE*(iCBox/nBox)+_VF32_SIZE*N*(iCBox%nBox);
-                #ifdef _DEBUG_INFO
+                int idxA = _VF32_SIZE*(i_abox/n_box)+_VF32_SIZE*N*(i_abox%n_box);
+                int idxB = _VF32_SIZE*(i_bbox/n_box)+_VF32_SIZE*N*(i_bbox%n_box);
+                int idxC = _VF32_SIZE*(i_cbox/n_box)+_VF32_SIZE*N*(i_cbox%n_box);
+                #ifdef DEBUG
+                    cout<<"===================================================================="<<endl;
+                    cout<<"i_abox: "<<i_abox/n_box<<','<<i_abox%n_box<<'\t';
+                    cout<<"i_bbox: "<<i_bbox/n_box<<','<<i_bbox%n_box<<'\t';
+                    cout<<"i_cbox: "<<i_cbox/n_box<<','<<i_cbox%n_box<<'\t';
                     cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
                     cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
                     cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
+
+
                 #endif
                 matrixF32_madd(&c[idxC], &a[idxA], &b[idxB], N);
-                iABox += nBox; // ABox向下移动一个Box位置
-                iCBox += nBox; // CBox向下移动一个Box位置
+                i_abox += n_box; // ABox向下移动一个Box位置
+                i_cbox += n_box; // CBox向下移动一个Box位置
             }
-            iBBox++; // BBox移动到下一个位置
+            i_bbox++; // BBox移动到下一个位置
         }
     }
-    void mthread_matrix_simd(float *a, float *b, float *c, int N){
+    void mthread_matrix_simd(float *a, float *b, float *c, int N, int n_thread){
         int n_box = N/_VF32_SIZE;
-        int i_abox=0, i_bbox = 0, i_cbox = 0;
+        int N_BOX = n_box*n_box;
+        omp_set_num_threads(n_thread);
         #pragma omp parallel for num_threads(n_thread)
-        for(;i_cbox<n_box*n_box;i_cbox++){ // Keep C box and shift A, B boxes
-            i_abox = i_cbox/n_box + 0; // the row of C box determine the row of A box
-            i_bbox = 0 + i_cbox%n_box; // the col of C box determine the col of B box
-            for(int i_box=0;i_box<n_box;i_box++){
-                int *p_a = &a[_VF32_SIZE*(iABox/nBox)+_VF32_SIZE*N*(iABox%nBox)];
-                int *p_b = &b[_VF32_SIZE*(iBBox/nBox)+_VF32_SIZE*N*(iBBox%nBox)];
-                int *p_c = &c[_VF32_SIZE*(iCBox/nBox)+_VF32_SIZE*N*(iCBox%nBox)];
-                matrixF32_madd(p_c, p_a, p_b, N);
-                i_abox++;           // A box shift right
-                i_bbox += n_box;    // B box shift down
+        // #pragma omp parallel
+            for(int i_cbox=0;i_cbox<N_BOX;i_cbox++){// Keep C box and shift A, B boxes
+                int i_abox = i_cbox/n_box + 0; // the row of C box determine the row of A box
+                int i_bbox = 0 + i_cbox%n_box; // the col of C box determine the col of B box
+                for(int i_box=0;i_box<n_box;i_box++){
+                    float *p_a = &a[_VF32_SIZE*(i_abox/n_box)+_VF32_SIZE*N*(i_abox%n_box)];
+                    float *p_b = &b[_VF32_SIZE*(i_bbox/n_box)+_VF32_SIZE*N*(i_bbox%n_box)];
+                    float *p_c = &c[_VF32_SIZE*(i_cbox/n_box)+_VF32_SIZE*N*(i_cbox%n_box)];
+                    #ifdef DEBUG
+                        // int idxA = _VF32_SIZE*(i_abox/n_box)+_VF32_SIZE*N*(i_abox%n_box);
+                        // int idxB = _VF32_SIZE*(i_bbox/n_box)+_VF32_SIZE*N*(i_bbox%n_box);
+                        // int idxC = _VF32_SIZE*(i_cbox/n_box)+_VF32_SIZE*N*(i_cbox%n_box);
+                        // cout<<"===================================================================="<<endl;
+                        // cout<<"i_abox: "<<i_abox/n_box<<','<<i_abox%n_box<<'\t';
+                        // cout<<"i_bbox: "<<i_bbox/n_box<<','<<i_bbox%n_box<<'\t';
+                        // cout<<"i_cbox: "<<i_cbox/n_box<<','<<i_cbox%n_box<<'\t';
+                        // cout<<"idxA: "<<idxA/N<<','<<idxA%N<<'\t';
+                        // cout<<"idxB: "<<idxB/N<<','<<idxB%N<<'\t';
+                        // cout<<"idxC: "<<idxC/N<<','<<idxC%N<<endl;
+
+                        printf("thread No.%d | i_abox: %d,%d | i_bbox: %d,%d | i_cbox: %d,%d | \n",
+                            omp_get_thread_num(), i_abox/n_box,i_abox/n_box,i_bbox/n_box,i_bbox/n_box,i_cbox/n_box,i_cbox/n_box);
+                    #endif
+                    matrixF32_madd(p_c, p_a, p_b, N);
+                    i_abox++;           // A box shift right
+                    i_bbox += n_box;    // B box shift down
+                }
+                // i_cbox++; // C box shift right
             }
-            i_cbox++; // C box shift right
-        }
     }
 #endif
 #ifdef SORT

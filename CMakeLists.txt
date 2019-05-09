@@ -4,7 +4,7 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 MESSAGE(STATUS "${CMAKE_CURRENT_SOURCE_DIR}")
 
 ADD_COMPILE_OPTIONS(
-    # -msse 
+    -msse 
     -fopenmp 
     -mavx
     )
@@ -18,4 +18,13 @@ ADD_EXECUTABLE(pclab_exe
     pclab.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/SIMDLib/VL2/vl2_matrix.cpp
     )
+
+FIND_PACKAGE( OpenMP REQUIRED)
+if(OPENMP_FOUND)
+    message("OPENMP FOUND")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
+
 target_link_libraries(pclab_exe OpenMP::OpenMP_CXX)

@@ -118,3 +118,8 @@
 - unit_merge()、struct msort_thread_para、msort_thread_assign()对有序子序列多线程归并改造
     - msort_thread_assign()将根据输入的block_size和n_subarr_of_black之间的关系决定unit_merge()执行的是底层归并还是对有序子
         序列归并；
+
+@May 9th 9:21
+= 踩坑
+- OpenMP
+    - 各线程独立的控制变量应该定义在#pragma omp语句后，否则所以线程将操作同一控制变量
